@@ -1,0 +1,229 @@
+{
+    "info": {
+      "name": "NFL Backend (SportsData.io)",
+      "_postman_id": "c6c1d2f7-0000-0000-0000-abcdefabcdef",
+      "description": "API collection for your NFL backend with SportsData.io integration:\n- Teams\n- Players\n- Standings\n- Matchups\n- Health check",
+      "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "item": [
+      {
+        "name": "Health Check",
+        "request": {
+          "method": "GET",
+          "header": [],
+          "url": {
+            "raw": "{{base_url}}/",
+            "host": [
+              "{{base_url}}"
+            ],
+            "path": [
+              ""
+            ]
+          }
+        },
+        "response": []
+      },
+      {
+        "name": "Teams",
+        "item": [
+          {
+            "name": "Get Teams - Live (SportsData.io)",
+            "request": {
+              "method": "GET",
+              "header": [],
+              "url": {
+                "raw": "{{base_url}}/api/teams/live",
+                "host": [
+                  "{{base_url}}"
+                ],
+                "path": [
+                  "api",
+                  "teams",
+                  "live"
+                ]
+              }
+            },
+            "response": []
+          },
+          {
+            "name": "Get Teams - From DB (MongoDB)",
+            "request": {
+              "method": "GET",
+              "header": [],
+              "url": {
+                "raw": "{{base_url}}/api/teams/db",
+                "host": [
+                  "{{base_url}}"
+                ],
+                "path": [
+                  "api",
+                  "teams",
+                  "db"
+                ]
+              }
+            },
+            "response": []
+          }
+        ]
+      },
+      {
+        "name": "Players",
+        "item": [
+          {
+            "name": "Get Players - Live by Team (SportsData.io)",
+            "request": {
+              "method": "GET",
+              "header": [],
+              "url": {
+                "raw": "{{base_url}}/api/players/live/WAS",
+                "host": [
+                  "{{base_url}}"
+                ],
+                "path": [
+                  "api",
+                  "players",
+                  "live",
+                  "WAS"
+                ]
+              },
+              "description": "Change WAS to any team abbreviation (DAL, KC, NE, BUF, etc.)"
+            },
+            "response": []
+          },
+          {
+            "name": "Get Players - From DB (MongoDB)",
+            "request": {
+              "method": "GET",
+              "header": [],
+              "url": {
+                "raw": "{{base_url}}/api/players/db",
+                "host": [
+                  "{{base_url}}"
+                ],
+                "path": [
+                  "api",
+                  "players",
+                  "db"
+                ]
+              }
+            },
+            "response": []
+          }
+        ]
+      },
+      {
+        "name": "Standings",
+        "item": [
+          {
+            "name": "Get Standings by Season Type (e.g. 2023REG)",
+            "request": {
+              "method": "GET",
+              "header": [],
+              "url": {
+                "raw": "{{base_url}}/api/standings/2023REG",
+                "host": [
+                  "{{base_url}}"
+                ],
+                "path": [
+                  "api",
+                  "standings",
+                  "2023REG"
+                ]
+              },
+              "description": "Change 2023REG to 2023POST, 2023PRE, etc. depending on SportsData.io season type."
+            },
+            "response": []
+          }
+        ]
+      },
+      {
+        "name": "Matchups",
+        "item": [
+          {
+            "name": "Sync Matchups & Teams from SportsData.io",
+            "request": {
+              "method": "GET",
+              "header": [],
+              "url": {
+                "raw": "{{base_url}}/api/matchups/sync/2023",
+                "host": [
+                  "{{base_url}}"
+                ],
+                "path": [
+                  "api",
+                  "matchups",
+                  "sync",
+                  "2023"
+                ]
+              },
+              "description": "Runs the sync for season 2023: pulls teams + schedule from SportsData.io and upserts into MongoDB."
+            },
+            "response": []
+          },
+          {
+            "name": "Get Matchups (by Season / Week / Team)",
+            "request": {
+              "method": "GET",
+              "header": [],
+              "url": {
+                "raw": "{{base_url}}/api/matchups?season=2023&week=1&team=BUF",
+                "host": [
+                  "{{base_url}}"
+                ],
+                "path": [
+                  "api",
+                  "matchups"
+                ],
+                "query": [
+                  {
+                    "key": "season",
+                    "value": "2023",
+                    "description": "Required. Season year (Number)."
+                  },
+                  {
+                    "key": "week",
+                    "value": "1",
+                    "description": "Optional. Week number."
+                  },
+                  {
+                    "key": "team",
+                    "value": "BUF",
+                    "description": "Optional. Team abbreviation (BUF, KC, NE, etc.)."
+                  }
+                ]
+              },
+              "description": "You can delete week or team params to see all matchups for a season, or filter by week and/or team."
+            },
+            "response": []
+          },
+          {
+            "name": "Get Matchup by ID",
+            "request": {
+              "method": "GET",
+              "header": [],
+              "url": {
+                "raw": "{{base_url}}/api/matchups/PUT_MATCHUP_ID_HERE",
+                "host": [
+                  "{{base_url}}"
+                ],
+                "path": [
+                  "api",
+                  "matchups",
+                  "PUT_MATCHUP_ID_HERE"
+                ]
+              },
+              "description": "Replace PUT_MATCHUP_ID_HERE with an actual _id from the /api/matchups response."
+            },
+            "response": []
+          }
+        ]
+      }
+    ],
+    "variable": [
+      {
+        "key": "base_url",
+        "value": "http://localhost:3000"
+      }
+    ]
+  }
+  
