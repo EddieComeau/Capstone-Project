@@ -1,41 +1,47 @@
 // server.js
-require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
-
-const connectDB = require("./config/db");
-connectDB();
-
-// existing routes
-const teamsRoutes = require("./routes/teams");
-const playersRoutes = require("./routes/players");
-const standingsRoutes = require("./routes/standings");
-const matchupsRoutes = require("./routes/matchups");
-
-// 🔹 NEW: auth routes
-const authRoutes = require("./routes/auth");
+const morgan = require("morgan");
+const mongoose = require("mongoose");
+require("dotenv").config();
 
 const app = express();
-const PORT = process.env.PORT || 3000;
 
+// Middleware
 app.use(cors());
 app.use(express.json());
+app.use(morgan("dev"));
 
-
-// Health check
-app.get("/", (req, res) => {
-  res.json({ message: "NFL backend with SportsData.io is running" });
-});
+// MongoDB connection
+mongoose
+  .connect(process.env.MONGO_URI, {
+    // optional: add options if needed
+  })
+  .then(() => console.log("✅ MongoDB connected"))
+  .catch((err) => console.error("❌ MongoDB connection error:", err));
 
 // Routes
-app.use("/api/teams", teamsRoutes);
-app.use("/api/players", playersRoutes);
-app.use("/api/standings", standingsRoutes);
- app.use("/api/matchups", matchupsRoutes);
+app.use("/api/players", require("./routes/players"));
+app.use("/api/teams", require("./routes/teams"));         // existing
+app.use("/api/matchups", require("./routes/matchups"));   // existing
+app.use("/api/boxscores", require("./routes/boxscores")); // existing
 
-// 🔹 NEW: auth
-app.use("/api/auth", authRoutes);
+app.use("/api/cards", require("./routes/cards")); // NEW card routes
+app.use("/api/sync", require("./routes/sync"));   // NEW sync routes
 
-app.listen(PORT, () => {
-  console.log(`Server listening on http://localhost:${PORT}`);
+// 404 handler (optional)
+app.use((req, res, next) => {
+  return res.status(404).json({ error: "Not found" });
 });
+
+// Error handler
+app.use((err, req, res, next) => {
+  console.error("ERROR:", err);
+  const status = err.status || 500;
+  return res.status(status).json({ error: err.message || "Server error" });
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () =>
+  console.log(`🚀 Server running on http://localhost:${PORT}`)
+);

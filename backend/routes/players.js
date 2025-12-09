@@ -1,16 +1,24 @@
 // routes/players.js
 const express = require("express");
-const {
-  getPlayersByTeamLive,
-  getPlayersFromDB,
-} = require("../controllers/playersController");
-
 const router = express.Router();
 
-// Live player data by team (SportsData.io)
-router.get("/live/:team", getPlayersByTeamLive);
+const {
+  getAllPlayers,
+  getPlayerById,
+  getPlayersByTeam,
+  syncPlayersForTeam,
+} = require("../controllers/playersController");
 
-// Players from your MongoDB database
-router.get("/db", getPlayersFromDB);
+// GET /api/players
+router.get("/", getAllPlayers);
+
+// GET /api/players/:id
+router.get("/:id", getPlayerById);
+
+// GET /api/players/team/:team
+router.get("/team/:team", getPlayersByTeam);
+
+// POST /api/players/sync/:team
+router.post("/sync/:team", syncPlayersForTeam);
 
 module.exports = router;

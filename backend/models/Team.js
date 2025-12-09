@@ -18,6 +18,8 @@ const teamSchema = new mongoose.Schema(
     },
     conference: String,
     division: String,
+    city: String,
+    fullName: String,
     logoUrl: String,
   },
   { timestamps: true }

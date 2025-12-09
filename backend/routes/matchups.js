@@ -2,217 +2,152 @@
 const express = require("express");
 const router = express.Router();
 
-const { getTeams, getSchedule } = require("../services/sportsdataService");
+const { getSchedule } = require("../services/sportsdataService");
 const Team = require("../models/Team");
 const Matchup = require("../models/Matchup");
 
 /**
- * Helper: upsert teams from SportsData.io payload
- * Adjust property names according to SportsData.io response.
+ * Upsert/ensure a Team document based on SportsData.io fields.
+ * Returns the MongoDB _id of the Team.
  */
-async function upsertTeams(teams) {
-  for (const t of teams) {
-    await Team.findOneAndUpdate(
-      { sportsdataTeamId: t.TeamID },
-      {
-        sportsdataTeamId: t.TeamID,
-        name: t.FullName || t.Name,
-        abbreviation: t.Key, // e.g. BUF, KC
-        conference: t.Conference,
-        division: t.Division,
-        logoUrl: t.WikipediaLogoUrl || t.TeamLogoUrl || "",
-      },
-      {
-        upsert: true,
-        new: true,
-        setDefaultsOnInsert: true,
-      }
-    );
-  }
+async function upsertTeam(sportsdataTeamId, abbrev) {
+  if (!sportsdataTeamId) return null;
+
+  const team = await Team.findOneAndUpdate(
+    { sportsdataTeamId },
+    {
+      sportsdataTeamId,
+      abbreviation: abbrev,
+      name: abbrev,
+    },
+    { upsert: true, new: true, setDefaultsOnInsert: true }
+  );
+
+  return team._id;
 }
 
 /**
- * Helper: upsert matchups (games) from SportsData.io schedule payload
- * @param {Array} schedule - Schedule array from SportsData.io
- * @param {number} season - Season year, e.g. 2023
+ * POST /api/matchups/sync
+ * Body: { "season": 2024, "seasonType": "REG" }
+ *
+ * Fetches a full season schedule from SportsData.io and upserts into MongoDB.
  */
-async function upsertMatchups(schedule, season) {
-  for (const game of schedule) {
-    // skip incomplete games
-    if (!game.HomeTeam || !game.AwayTeam) continue;
-
-    const homeTeam = await Team.findOne({ abbreviation: game.HomeTeam });
-    const awayTeam = await Team.findOne({ abbreviation: game.AwayTeam });
-
-    if (!homeTeam || !awayTeam) continue;
-
-    await Matchup.findOneAndUpdate(
-      { sportsdataGameId: game.GameID },
-      {
-        sportsdataGameId: game.GameID,
-        season,
-        week: game.Week,
-        homeTeamId: homeTeam._id,
-        awayTeamId: awayTeam._id,
-        kickoffTime: game.Date ? new Date(game.Date) : null,
-        venue: game.StadiumDetails?.Name || game.Stadium || "",
-        // These may only be present with certain subscriptions:
-        spread: game.PointSpread ?? null,
-        overUnder: game.OverUnder ?? null,
-      },
-      {
-        upsert: true,
-        new: true,
-        setDefaultsOnInsert: true,
-      }
-    );
-  }
-}
-
-/**
- * GET /api/matchups/sync/:season
- *
- * Example:
- *   GET /api/matchups/sync/2023
- *
- * Behavior:
- *   - Pull teams and schedule for the given season from SportsData.io
- *   - Upsert teams into Team collection
- *   - Upsert games into Matchup collection
- *
- * Use this occasionally to sync your DB
- * (e.g. once before the season or once per week).
- */
-router.get("/sync/:season", async (req, res, next) => {
+router.post("/sync", async (req, res) => {
   try {
-    const season = parseInt(req.params.season, 10);
+    const { season, seasonType } = req.body;
 
-    if (Number.isNaN(season)) {
-      return res.status(400).json({ error: "Invalid season (expected a year, e.g. 2023)" });
+    if (!season) {
+      return res
+        .status(400)
+        .json({ error: 'season is required, e.g. { "season": 2024, "seasonType": "REG" }' });
     }
 
-    // getTeams typically does not need season, but we can call it anyway
-    const [teams, schedule] = await Promise.all([
-      getTeams(),           // All teams
-      getSchedule(season),  // Schedule for the season
-    ]);
+    const seasonNumber = Number(season);
+    const seasonTypeStr = seasonType || "REG";
+    const seasonKey = `${seasonNumber}${seasonTypeStr}`; // e.g. "2024REG"
 
-    await upsertTeams(teams);
-    await upsertMatchups(schedule, season);
+    // 1. Fetch schedule from SportsData.io
+    const schedule = await getSchedule(seasonKey);
+    console.log(`Fetched ${schedule.length} games from SportsData.io for ${seasonKey}`);
 
-    const teamsCount = await Team.countDocuments();
-    const gamesCount = await Matchup.countDocuments({ season });
+    let upsertedCount = 0;
+    let skippedNoId = 0;
+
+    // 2. Upsert each game
+    for (const game of schedule) {
+      // Pick a reliable unique ID for each game
+      const uniqueId =
+        game.GameID ??
+        game.GlobalGameID ??
+        game.GameKey;
+
+      if (uniqueId == null) {
+        skippedNoId++;
+        console.warn("Skipping game with no usable ID:", {
+          GameID: game.GameID,
+          GlobalGameID: game.GlobalGameID,
+          GameKey: game.GameKey,
+        });
+        continue;
+      }
+
+      const seasonFromGame = Number(game.Season) || seasonNumber;
+
+      // Upsert home / away teams
+      const homeTeamId = await upsertTeam(game.HomeTeamID, game.HomeTeam);
+      const awayTeamId = await upsertTeam(game.AwayTeamID, game.AwayTeam);
+
+      await Matchup.findOneAndUpdate(
+        { sportsdataGameId: uniqueId },
+        {
+          sportsdataGameId: uniqueId,
+          season: seasonFromGame,
+          seasonType: game.SeasonType || seasonTypeStr,
+          week: game.Week,
+          homeTeam: homeTeamId,
+          awayTeam: awayTeamId,
+          kickoffTime: game.Date ? new Date(game.Date) : null,
+          homeScore: game.HomeScore ?? null,
+          awayScore: game.AwayScore ?? null,
+        },
+        { upsert: true, new: true, setDefaultsOnInsert: true }
+      );
+
+      upsertedCount++;
+    }
+
+    // 3. Count documents in DB
+    const matchupsInDbForSeason = await Matchup.countDocuments({
+      season: seasonNumber,
+    });
+
+    const totalMatchupsInDb = await Matchup.countDocuments({});
 
     res.json({
-      message: "Matchups sync completed",
-      season,
-      teamsCount,
-      gamesCount,
+      message: "Matchups synced successfully",
+      season: seasonNumber,
+      seasonType: seasonTypeStr,
+      gamesFetched: schedule.length,
+      gamesUpserted: upsertedCount,
+      skippedNoId,
+      matchupsInDbForSeason,
+      totalMatchupsInDb,
     });
   } catch (err) {
-    next(err);
+    console.error("Sync error:", err.message);
+    res
+      .status(500)
+      .json({ error: "Failed to sync matchups", details: err.message });
   }
 });
 
 /**
  * GET /api/matchups
- *
- * Query params:
- *   season (required) - year, e.g. 2023
- *   week   (optional) - number, e.g. 1
- *   team   (optional) - team abbrev, e.g. BUF
- *
- * Examples:
- *   /api/matchups?season=2023
- *   /api/matchups?season=2023&week=1
- *   /api/matchups?season=2023&team=BUF
- *   /api/matchups?season=2023&week=5&team=KC
+ * Optional query params:
+ *   ?season=2024
+ *   ?season=2024&week=1
  */
-router.get("/", async (req, res, next) => {
+router.get("/", async (req, res) => {
   try {
-    const { season, week, team } = req.query;
+    const { season, week } = req.query;
+    const filter = {};
 
-    if (!season) {
-      return res.status(400).json({ error: "season query param is required (e.g. ?season=2023)" });
-    }
+    if (season) filter.season = Number(season);
+    if (week) filter.week = Number(week);
 
-    const query = {
-      season: Number(season),
-    };
-
-    if (!Number.isNaN(Number(week)) && week !== undefined) {
-      query.week = Number(week);
-    }
-
-    // If team query is given, filter by either home or away team
-    if (team) {
-      const teamDoc = await Team.findOne({
-        abbreviation: team.toUpperCase(),
-      });
-
-      if (!teamDoc) {
-        // No such team in DB → no matchups
-        return res.json([]);
-      }
-
-      query.$or = [
-        { homeTeamId: teamDoc._id },
-        { awayTeamId: teamDoc._id },
-      ];
-    }
-
-    const matchups = await Matchup.find(query)
-      .populate("homeTeamId", "name abbreviation logoUrl")
-      .populate("awayTeamId", "name abbreviation logoUrl")
+    const matchups = await Matchup.find(filter)
+      .populate("homeTeam")
+      .populate("awayTeam")
       .sort({ week: 1, kickoffTime: 1 });
 
-    const result = matchups.map((m) => ({
-      id: m._id,
-      season: m.season,
-      week: m.week,
-      sportsdataGameId: m.sportsdataGameId,
-      kickoffTime: m.kickoffTime,
-      venue: m.venue,
-      spread: m.spread,
-      overUnder: m.overUnder,
-      homeTeam: m.homeTeamId,
-      awayTeam: m.awayTeamId,
-    }));
-
-    res.json(result);
-  } catch (err) {
-    next(err);
-  }
-});
-
-/**
- * GET /api/matchups/:id
- * Return a single matchup with populated team info.
- */
-router.get("/:id", async (req, res, next) => {
-  try {
-    const matchup = await Matchup.findById(req.params.id)
-      .populate("homeTeamId")
-      .populate("awayTeamId");
-
-    if (!matchup) {
-      return res.status(404).json({ error: "Matchup not found" });
-    }
-
     res.json({
-      id: matchup._id,
-      season: matchup.season,
-      week: matchup.week,
-      sportsdataGameId: matchup.sportsdataGameId,
-      kickoffTime: matchup.kickoffTime,
-      venue: matchup.venue,
-      spread: matchup.spread,
-      overUnder: matchup.overUnder,
-      homeTeam: matchup.homeTeamId,
-      awayTeam: matchup.awayTeamId,
+      count: matchups.length,
+      filterUsed: filter,
+      data: matchups,
     });
   } catch (err) {
-    next(err);
+    console.error("Error fetching matchups:", err.message);
+    res.status(500).json({ error: "Failed to fetch matchups" });
   }
 });
 

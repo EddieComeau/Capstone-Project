@@ -1,23 +1,19 @@
 // models/PlayerAdvancedMetrics.js
 const mongoose = require("mongoose");
-const { Schema } = mongoose;
 
-const playerAdvancedMetricsSchema = new Schema(
-  {
-    playerId: {
-      type: Schema.Types.ObjectId,
-      ref: "Player",
-      required: true,
-    },
-    season: {
-      type: Number,
-      required: true,
-    },
-    efficiencyScore: Number, // your custom metric based on stats
-    boomProbability: Number, // 0–1 or percentage
-    matchupNotes: String,
-  },
-  { timestamps: true }
-);
+const PlayerAdvancedMetricsSchema = new mongoose.Schema({
+  player: { type: mongoose.Schema.Types.ObjectId, ref: "Player", required: true },
 
-module.exports = mongoose.model("PlayerAdvancedMetrics", playerAdvancedMetricsSchema);
+  PlayerID: Number,
+  Team: String,
+  Position: String,
+
+  season: Number,
+  week: Number, // null for season totals
+
+  // Raw API blob (store everything — your card UI will pick what it needs)
+  metrics: {},
+
+}, { timestamps: true });
+
+module.exports = mongoose.model("PlayerAdvancedMetrics", PlayerAdvancedMetricsSchema);

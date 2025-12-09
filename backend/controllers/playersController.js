@@ -1,38 +1,92 @@
 // controllers/playersController.js
-const { fetchFromSportsData } = require("../services/sportsdataService");
-const Player = require("../models/Player"); // your existing model
+const Player = require("../models/Player");
+const { syncTeamPlayers } = require("../services/syncService");
 
-// GET /api/players/live/:team  => SportsData.io PlayersBasic
-async function getPlayersByTeamLive(req, res) {
+/**
+ * GET /api/players
+ * Optional query: team, position, q (search by name)
+ */
+async function getAllPlayers(req, res, next) {
   try {
-    const { team } = req.params; // e.g. WAS, DAL, KC
+    const filter = {};
+    if (req.query.team) filter.Team = req.query.team.toUpperCase();
+    if (req.query.position) filter.Position = req.query.position.toUpperCase();
 
-    if (!team) {
-      return res.status(400).json({ error: "Team abbreviation is required" });
+    const q = req.query.q;
+    if (q) {
+      filter.$or = [
+        { FullName: new RegExp(q, "i") },
+        { FirstName: new RegExp(q, "i") },
+        { LastName: new RegExp(q, "i") },
+      ];
     }
 
-    const path = `/scores/json/PlayersBasic/${team.toUpperCase()}`;
-    const data = await fetchFromSportsData(path);
-
-    res.json(data);
+    const players = await Player.find(filter).sort({ Team: 1, Position: 1, DepthChartOrder: 1 });
+    res.json(players);
   } catch (err) {
-    console.error("Error fetching live players:", err.message);
-    res.status(500).json({ error: "Failed to fetch live players" });
+    next(err);
   }
 }
 
-// GET /api/players/db  => players stored in MongoDB
-async function getPlayersFromDB(req, res) {
+/**
+ * GET /api/players/:id
+ */
+async function getPlayerById(req, res, next) {
   try {
-    const players = await Player.find();
+    const { id } = req.params;
+    const player = await Player.findById(id);
+
+    if (!player) {
+      return res.status(404).json({ error: "Player not found" });
+    }
+
+    res.json(player);
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * GET /api/players/team/:team
+ */
+async function getPlayersByTeam(req, res, next) {
+  try {
+    const { team } = req.params;
+    const players = await Player.find({ Team: team.toUpperCase() }).sort({
+      Position: 1,
+      DepthChartOrder: 1,
+    });
+
     res.json(players);
   } catch (err) {
-    console.error("Error fetching players from DB:", err.message);
-    res.status(500).json({ error: "Failed to fetch players from database" });
+    next(err);
+  }
+}
+
+/**
+ * POST /api/players/sync/:team
+ * Body (optional): { overwrite: boolean }
+ *
+ * Syncs roster for a single team into Player collection.
+ * Uses syncTeamPlayers from syncService.
+ */
+async function syncPlayersForTeam(req, res, next) {
+  try {
+    const { team } = req.params;
+    const count = await syncTeamPlayers(team.toUpperCase());
+
+    res.json({
+      team: team.toUpperCase(),
+      syncedPlayers: count,
+    });
+  } catch (err) {
+    next(err);
   }
 }
 
 module.exports = {
-  getPlayersByTeamLive,
-  getPlayersFromDB,
+  getAllPlayers,
+  getPlayerById,
+  getPlayersByTeam,
+  syncPlayersForTeam,
 };
