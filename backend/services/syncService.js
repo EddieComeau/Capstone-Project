@@ -20,7 +20,9 @@ const {
 const {
   computeAndSaveDefensiveMetricsForTeam,
 } = require("./defensiveMetricsService");
-
+const {
+  computeAndSaveSkillMetricsForTeam,
+} = require("./SkillMetricsService");
 /**
  * Sync base player data (roster) for a single team/season/week.
  * Uses SportsData.io's team players endpoint via sportsdataService.
@@ -123,16 +125,18 @@ async function resolveTeamKeys(teams) {
  * - special teams metrics
  * - defensive metrics
  */
+
 async function syncWeeklyForTeam(season, week, team) {
   await ensureTeamDocument(team);
 
-  const [playersResult, lineBasic, lineAdvanced, special, defense] =
+  const [playersResult, lineBasic, lineAdvanced, special, defense, skills] =
     await Promise.all([
       syncTeamPlayers(team),
       computeAndSaveLineMetricsForTeam(season, week, team),
       computeAndSaveAdvancedLineMetricsForTeam(season, week, team),
       computeAndSaveSpecialTeamsForTeam(season, week, team),
       computeAndSaveDefensiveMetricsForTeam(season, week, team),
+      computeAndSaveSkillMetricsForTeam(season, week, team),
     ]);
 
   return {
@@ -144,6 +148,7 @@ async function syncWeeklyForTeam(season, week, team) {
     advancedLineMetricsSynced: lineAdvanced.length,
     specialTeamsMetricsSynced: special.length,
     defensiveMetricsSynced: defense.length,
+    skillMetricsSynced: skills.length,
   };
 }
 
@@ -217,7 +222,6 @@ async function syncAllTeamsForWeek({
 
 module.exports = {
   syncTeamPlayers,
-  syncAdvancedMetricsWeek,
   syncWeeklyForTeam,
   syncAllTeamsForWeek,
 };
