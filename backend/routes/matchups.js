@@ -18,7 +18,6 @@ async function upsertTeam(sportsdataTeamId, abbrev) {
     {
       sportsdataTeamId,
       abbreviation: abbrev,
-      name: abbrev,
     },
     { upsert: true, new: true, setDefaultsOnInsert: true }
   );
@@ -28,7 +27,12 @@ async function upsertTeam(sportsdataTeamId, abbrev) {
 
 /**
  * POST /api/matchups/sync
- * Body: { "season": 2024, "seasonType": "REG" }
+ *
+ * Body:
+ *   {
+ *     "season": 2024,
+ *     "seasonType": "REG"   // optional, defaults to "REG"
+ *   }
  *
  * Fetches a full season schedule from SportsData.io and upserts into MongoDB.
  */
@@ -37,9 +41,10 @@ router.post("/sync", async (req, res) => {
     const { season, seasonType } = req.body;
 
     if (!season) {
-      return res
-        .status(400)
-        .json({ error: 'season is required, e.g. { "season": 2024, "seasonType": "REG" }' });
+      return res.status(400).json({
+        error:
+          'season is required, e.g. { "season": 2024, "seasonType": "REG" }',
+      });
     }
 
     const seasonNumber = Number(season);
@@ -48,7 +53,9 @@ router.post("/sync", async (req, res) => {
 
     // 1. Fetch schedule from SportsData.io
     const schedule = await getSchedule(seasonKey);
-    console.log(`Fetched ${schedule.length} games from SportsData.io for ${seasonKey}`);
+    console.log(
+      `Fetched ${schedule.length} games from SportsData.io for ${seasonKey}`
+    );
 
     let upsertedCount = 0;
     let skippedNoId = 0;
@@ -59,19 +66,18 @@ router.post("/sync", async (req, res) => {
       const uniqueId =
         game.GameID ??
         game.GlobalGameID ??
+        game.ScoreID ??
         game.GameKey;
 
-      if (uniqueId == null) {
+      if (!uniqueId) {
         skippedNoId++;
-        console.warn("Skipping game with no usable ID:", {
-          GameID: game.GameID,
-          GlobalGameID: game.GlobalGameID,
-          GameKey: game.GameKey,
-        });
         continue;
       }
 
-      const seasonFromGame = Number(game.Season) || seasonNumber;
+      const seasonFromGame =
+        typeof game.Season === "number"
+          ? game.Season
+          : parseInt(game.Season, 10) || seasonNumber;
 
       // Upsert home / away teams
       const homeTeamId = await upsertTeam(game.HomeTeamID, game.HomeTeam);
@@ -104,45 +110,57 @@ router.post("/sync", async (req, res) => {
     const totalMatchupsInDb = await Matchup.countDocuments({});
 
     res.json({
-      message: "Matchups synced successfully",
+      message: "Matchups sync completed",
       season: seasonNumber,
       seasonType: seasonTypeStr,
-      gamesFetched: schedule.length,
-      gamesUpserted: upsertedCount,
+      gamesFetchedFromSportsData: schedule.length,
+      upsertedCount,
       skippedNoId,
       matchupsInDbForSeason,
       totalMatchupsInDb,
     });
   } catch (err) {
-    console.error("Sync error:", err.message);
-    res
-      .status(500)
-      .json({ error: "Failed to sync matchups", details: err.message });
+    console.error("Error syncing matchups:", err.message);
+    res.status(500).json({ error: "Failed to sync matchups" });
   }
 });
 
 /**
  * GET /api/matchups
+ *
  * Optional query params:
- *   ?season=2024
- *   ?season=2024&week=1
+ *   - season (number)
+ *   - week   (number)
+ *   - teamId (MongoDB ObjectId for a Team)
  */
 router.get("/", async (req, res) => {
   try {
-    const { season, week } = req.query;
+    const { season, week, teamId } = req.query;
     const filter = {};
+    const or = [];
 
-    if (season) filter.season = Number(season);
-    if (week) filter.week = Number(week);
+    if (season) {
+      filter.season = Number(season);
+    }
 
-    const matchups = await Matchup.find(filter)
+    if (week) {
+      filter.week = Number(week);
+    }
+
+    if (teamId) {
+      or.push({ homeTeam: teamId }, { awayTeam: teamId });
+    }
+
+    const mongoFilter = or.length ? { ...filter, $or: or } : filter;
+
+    const matchups = await Matchup.find(mongoFilter)
       .populate("homeTeam")
       .populate("awayTeam")
       .sort({ week: 1, kickoffTime: 1 });
 
     res.json({
       count: matchups.length,
-      filterUsed: filter,
+      filterUsed: mongoFilter,
       data: matchups,
     });
   } catch (err) {

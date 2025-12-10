@@ -17,27 +17,35 @@ const {
 const {
   getDefensiveCardsFromDb,
 } = require("../services/defensiveMetricsService");
-/*const {
+const {
   getAllCardsForTeam,
 } = require("../services/cardAggregationService");
-*/
+
 /**
  * Unified helper to build a basic card shell for any player.
  */
 function buildBasePlayerCard(playerDoc) {
+  if (!playerDoc) return null;
+
   return {
-    playerId: playerDoc?._id,
-    PlayerID: playerDoc?.PlayerID,
-    name: playerDoc?.FullName,
-    position: playerDoc?.Position,
-    team: playerDoc?.Team,
-    photo: playerDoc?.PhotoUrl,
+    playerId: playerDoc._id,
+    PlayerID: playerDoc.PlayerID,
+    name: playerDoc.FullName,
+    position: playerDoc.Position,
+    team: playerDoc.Team,
+    photo: playerDoc.PhotoUrl,
+    jersey: playerDoc.Jersey,
+    height: playerDoc.Height,
+    weight: playerDoc.Weight,
+    college: playerDoc.College,
+    experience: playerDoc.Experience,
+    age: playerDoc.Age,
   };
 }
 
 /**
  * GET /api/cards/player/:id
- * Query: season, week (week required for now since we sync weekly metrics)
+ * Query: season, week (week required)
  *
  * Returns a "skill position" style card using PlayerAdvancedMetrics.
  */
@@ -82,8 +90,6 @@ router.get("/player/:id", async (req, res, next) => {
 /**
  * GET /api/cards/oline/:team
  * Query: season, week (week required)
- *
- * Returns basic offensive line cards (shared line grade + snaps).
  */
 router.get("/oline/:team", async (req, res, next) => {
   try {
@@ -108,8 +114,6 @@ router.get("/oline/:team", async (req, res, next) => {
 /**
  * GET /api/cards/advanced-oline/:team
  * Query: season, week (week required)
- *
- * Returns advanced offensive line cards (pressures, sacks, efficiency).
  */
 router.get("/advanced-oline/:team", async (req, res, next) => {
   try {
@@ -134,8 +138,6 @@ router.get("/advanced-oline/:team", async (req, res, next) => {
 /**
  * GET /api/cards/special-teams/:team
  * Query: season, week (week required)
- *
- * Returns special teams cards (K, P, returners, ST gunners).
  */
 router.get("/special-teams/:team", async (req, res, next) => {
   try {
@@ -160,8 +162,6 @@ router.get("/special-teams/:team", async (req, res, next) => {
 /**
  * GET /api/cards/defense/:team
  * Query: season, week (week required)
- *
- * Returns defensive cards (safeties, CBs, LBs, hybrids).
  */
 router.get("/defense/:team", async (req, res, next) => {
   try {
@@ -187,8 +187,12 @@ router.get("/defense/:team", async (req, res, next) => {
  * GET /api/cards/team/:team
  * Query: season, week (week required)
  *
- * Returns ALL card groups for a team in one payload:
- * { team, season, week, oline, olineAdvanced, specialTeams, defense }
+ * Returns aggregate cards for:
+ *   - oline
+ *   - olineAdvanced
+ *   - specialTeams
+ *   - defense
+ *   - skills
  */
 router.get("/team/:team", async (req, res, next) => {
   try {

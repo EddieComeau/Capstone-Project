@@ -73,7 +73,7 @@ async function getPlayersByTeam(req, res, next) {
 async function syncPlayersForTeam(req, res, next) {
   try {
     const { team } = req.params;
-    const count = await syncTeamPlayers(team.toUpperCase());
+    const { count } = await syncTeamPlayers(team.toUpperCase());
 
     res.json({
       team: team.toUpperCase(),

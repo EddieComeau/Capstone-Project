@@ -1,7 +1,7 @@
 // controllers/standingsController.js
 const { fetchFromSportsData } = require("../services/sportsdataService");
 
-// GET /api/standings/:season  (e.g. 2023REG, 2023POST)
+// GET /api/standings/:season  (e.g. 2024REG, 2024POST, or just 2024)
 async function getStandingsBySeason(req, res) {
   try {
     const { season } = req.params;
@@ -9,7 +9,7 @@ async function getStandingsBySeason(req, res) {
     if (!season) {
       return res
         .status(400)
-        .json({ error: "Season is required (e.g. 2023REG)" });
+        .json({ error: "Season is required (e.g. 2024REG)" });
     }
 
     const path = `/scores/json/Standings/${season}`;
