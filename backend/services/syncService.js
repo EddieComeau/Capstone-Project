@@ -1,10 +1,8 @@
 // services/syncService.js
 const Team = require("../models/Team");
 const Player = require("../models/Player");
-const PlayerAdvancedMetrics = require("../models/PlayerAdvancedMetrics");
 
 const {
-  getAdvancedPlayerGameMetricsByWeek,
   getTeamPlayers,
   getAllTeamKeys,
   getAllTeams,
@@ -58,46 +56,6 @@ async function syncTeamPlayers(team) {
   return { team, count: docs.length };
 }
 
-/**
- * Sync advanced player metrics for a single team/season/week.
- * Persists into PlayerAdvancedMetrics.
- */
-async function syncAdvancedMetricsWeek(season, week, team) {
-  const teamKey = String(team).toUpperCase();
-  const metrics = await getAdvancedPlayerGameMetricsByWeek(season, week);
-  const teamMetrics = metrics.filter(
-    (m) => m.Team === teamKey || m.TeamKey === teamKey
-  );
-
-  const playerIds = teamMetrics.map((m) => m.PlayerID);
-  const players = await Player.find({ PlayerID: { $in: playerIds } });
-  const playerById = new Map(players.map((p) => [p.PlayerID, p]));
-
-  const ops = teamMetrics.map(async (m) => {
-    const player = playerById.get(m.PlayerID);
-    if (!player) return null;
-
-    return PlayerAdvancedMetrics.findOneAndUpdate(
-      { player: player._id, season, week },
-      {
-        player: player._id,
-        PlayerID: m.PlayerID,
-        season,
-        week,
-        metrics: m, // you can narrow this to the specific metrics shape you want
-      },
-      { new: true, upsert: true }
-    );
-  });
-
-  const docs = (await Promise.all(ops)).filter(Boolean);
-  return { team, count: docs.length };
-}
-
-/**
- * Ensure we have a Team document for the abbreviation we are syncing.
- * Falls back to SportsData.io's AllTeams endpoint if the team is not yet stored.
- */
 async function ensureTeamDocument(teamKey) {
   const normalized = String(teamKey).toUpperCase();
 
@@ -160,7 +118,6 @@ async function resolveTeamKeys(teams) {
 /**
  * Sync everything for a single team/week:
  * - roster (Player)
- * - advanced skill metrics (PlayerAdvancedMetrics)
  * - OL basic metrics (LineMetrics)
  * - OL advanced metrics
  * - special teams metrics
@@ -169,28 +126,20 @@ async function resolveTeamKeys(teams) {
 async function syncWeeklyForTeam(season, week, team) {
   await ensureTeamDocument(team);
 
-  const [
-    playersResult,
-    advancedResult,
-    lineBasic,
-    lineAdvanced,
-    special,
-    defense,
-  ] = await Promise.all([
-    syncTeamPlayers(team),
-    syncAdvancedMetricsWeek(season, week, team),
-    computeAndSaveLineMetricsForTeam(season, week, team),
-    computeAndSaveAdvancedLineMetricsForTeam(season, week, team),
-    computeAndSaveSpecialTeamsForTeam(season, week, team),
-    computeAndSaveDefensiveMetricsForTeam(season, week, team),
-  ]);
+  const [playersResult, lineBasic, lineAdvanced, special, defense] =
+    await Promise.all([
+      syncTeamPlayers(team),
+      computeAndSaveLineMetricsForTeam(season, week, team),
+      computeAndSaveAdvancedLineMetricsForTeam(season, week, team),
+      computeAndSaveSpecialTeamsForTeam(season, week, team),
+      computeAndSaveDefensiveMetricsForTeam(season, week, team),
+    ]);
 
   return {
     team,
     season,
     week,
     playersSynced: playersResult.count,
-    advancedMetricsSynced: advancedResult.count,
     lineMetricsSynced: lineBasic.length,
     advancedLineMetricsSynced: lineAdvanced.length,
     specialTeamsMetricsSynced: special.length,

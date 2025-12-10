@@ -11,12 +11,18 @@ if (!BASE_URL || !API_KEY) {
   );
 }
 
-/**
- * Build a full SportsData.io URL for a given path.
- * `path` should start with a "/" (e.g. "/scores/json/AllTeams").
- * We always append `?key=...` or `&key=...` as required.
- */
+function requireApiKey() {
+  if (!API_KEY) {
+    const err = new Error(
+      "[sportsdataService] SPORTSDATA_API_KEY is not set; cannot call SportsData.io"
+    );
+    err.status = 401;
+    throw err;
+  }
+}
+
 function buildUrl(path) {
+  requireApiKey();
   if (!path.startsWith("/")) {
     throw new Error(
       `[sportsdataService] Path must start with "/". Received: ${path}`
@@ -39,14 +45,25 @@ async function get(path, axiosConfig = {}) {
     const status = err.response?.status;
     const data = err.response?.data;
 
+    let message = err.message;
+    if (status === 401) {
+      message =
+        "[sportsdataService] Received 401 Unauthorized from SportsData.io. Verify SPORTSDATA_API_KEY is set and valid.";
+    }
+
+
     console.error(
       `[sportsdataService] GET ${path} failed:`,
       status || "",
-      data || err.message
+      data || message
     );
 
     // Re-throw so routes/controllers can decide how to respond
-    throw err;
+    const wrappedError = new Error(message);
+    wrappedError.status = status;
+    wrappedError.data = data;
+    wrappedError.cause = err;
+    throw wrappedError;
   }
 }
 
@@ -237,40 +254,6 @@ async function getAllTeamKeys() {
     .map((k) => String(k).toUpperCase());
 }
 
-/* -------------------------------------------------------------------------- */
-/*  ADVANCED METRICS (ADVANCED-METRICS API)                                   */
-/* -------------------------------------------------------------------------- */
-
-/**
- * Advanced season-long metrics by team.
- *
- * Endpoint (Advanced Metrics API):
- *   /v3/nfl/advanced-metrics/{format}/AdvancedPlayerSeasonStats/{season}/{team}
- */
-async function getAdvancedPlayerSeasonMetrics(season, team) {
-  const seasonStr = toSeasonString(season);
-  const teamKey = toTeamKey(team);
-
-  return get(
-    `/advanced-metrics/json/AdvancedPlayerSeasonStats/${seasonStr}/${teamKey}`
-  );
-}
-
-/**
- * Advanced per-game metrics for all players in a given week.
- *
- * Endpoint:
- *   /v3/nfl/advanced-metrics/{format}/AdvancedPlayerGameStats/{season}/{week}
- */
-async function getAdvancedPlayerGameMetricsByWeek(season, week) {
-  const seasonStr = toSeasonString(season);
-  const weekStr = String(week);
-
-  return get(
-    `/advanced-metrics/json/AdvancedPlayerGameStats/${seasonStr}/${weekStr}`
-  );
-}
-
 /**
  * Snap counts by team & week.
  *
@@ -304,7 +287,4 @@ module.exports = {
   getPlayerSeasonStatsByTeam,
   getPlayerSnapCountsByTeam,
 
-  // Advanced metrics
-  getAdvancedPlayerSeasonMetrics,
-  getAdvancedPlayerGameMetricsByWeek,
 };
