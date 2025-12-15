@@ -139,3 +139,36 @@ export default function App() {
   );
 }
 
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import "./App.css";
+
+import TopTabs from "./components/TopTabs";
+import HomePage from "./pages/HomePage";
+import PrototypePage from "./pages/PrototypePage";
+
+// Your existing pages/components (no changes in this chat)
+import DepthChartPage from "./pages/DepthChartPage";
+import PlayByPlayTab from "./components/playbyplay/PlayByPlayTab";
+
+export default function App() {
+  return (
+    <BrowserRouter>
+      <TopTabs />
+
+      <main className="appMain">
+        <Routes>
+          <Route path="/" element={<HomePage />} />
+
+          {/* Your existing templates page moved to /cards */}
+          <Route path="/cards" element={<PrototypePage />} />
+
+          {/* Existing routes */}
+          <Route path="/depth-chart" element={<DepthChartPage />} />
+          <Route path="/play-by-play" element={<PlayByPlayTab />} />
+
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </main>
+    </BrowserRouter>
+  );
+}
