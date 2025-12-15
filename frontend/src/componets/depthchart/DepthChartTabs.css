@@ -1,0 +1,42 @@
+/* FRONTEND (React/Vite) — Styles for DepthChartTabs */
+
+.dctabs {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.dctabs__tab {
+  border: 1px solid rgba(255,255,255,0.16);
+  background: rgba(0,0,0,0.25);
+  color: rgba(255,255,255,0.9);
+  padding: 10px 12px;
+  border-radius: 12px;
+  font-weight: 800;
+  letter-spacing: 0.2px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.dctabs__tab.is-active {
+  background: rgba(255,255,255,0.12);
+  border-color: rgba(255,255,255,0.28);
+}
+
+.dctabs__tab:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.dctabs__soon {
+  font-size: 10px;
+  font-weight: 900;
+  opacity: 0.9;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.14);
+  background: rgba(0,0,0,0.25);
+}

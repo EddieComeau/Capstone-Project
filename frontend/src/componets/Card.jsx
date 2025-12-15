@@ -2,8 +2,11 @@
 import './Card.css'
 
 function Card({ children, tier = 'Base', accent = 'default' }) {
+  const tierClass = `card-tier-${String(tier).toLowerCase()}`
+  const accentClass = `card-accent-${accent}`
+
   return (
-    <div className={`card card-tier-${tier.toLowerCase()} card-accent-${accent}`}>
+    <div className={`card ${tierClass} ${accentClass}`}>
       {children}
     </div>
   )

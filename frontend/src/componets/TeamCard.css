@@ -1,0 +1,104 @@
+/* src/components/TeamCard.css */
+
+.team-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.8rem;
+  }
+  
+  .team-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #9ca3af;
+  }
+  
+  .team-division {
+    padding: 0.1rem 0.4rem;
+    border-radius: 999px;
+    border: 1px solid rgba(148, 163, 184, 0.6);
+    align-self: flex-start;
+  }
+  
+  .team-rank {
+    opacity: 0.9;
+  }
+  
+  .team-record {
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: #e5e7eb;
+  }
+  
+  .team-name-block {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 0.75rem;
+  }
+  
+  .team-name {
+    font-size: 1.3rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  
+  .team-code {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: #9ca3af;
+  }
+  
+  .team-stats-strip {
+    display: flex;
+    gap: 0.6rem;
+    margin-bottom: 1rem;
+  }
+  
+  .team-stat {
+    flex: 1;
+    padding: 0.45rem 0.55rem;
+    border-radius: 0.75rem;
+    background: rgba(15, 23, 42, 0.8);
+    border: 1px solid rgba(55, 65, 81, 0.85);
+  }
+  
+  .team-stat .label {
+    display: block;
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #9ca3af;
+    margin-bottom: 0.15rem;
+  }
+  
+  .team-stat .value {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #e5e7eb;
+  }
+  
+  .team-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.7rem;
+    color: #9ca3af;
+  }
+  
+  .team-tag {
+    padding: 0.2rem 0.5rem;
+    border-radius: 999px;
+    background: rgba(31, 41, 55, 0.9);
+  }
+  
+  .team-era {
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+  }
+  

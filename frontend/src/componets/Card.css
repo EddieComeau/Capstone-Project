@@ -1,54 +1,84 @@
 /* src/components/Card.css */
 
 .card {
-    position: relative;
-    padding: 1.25rem;
-    border-radius: 1.25rem;
-    background: radial-gradient(circle at top left, #222 0, #111 45%, #050505 100%);
-    color: #f9fafb;
-    box-shadow:
-      0 10px 30px rgba(0, 0, 0, 0.75),
-      0 0 0 1px rgba(255, 255, 255, 0.02);
-    overflow: hidden;
-    min-width: 260px;
-    max-width: 340px;
-    border: 1px solid rgba(148, 163, 184, 0.3);
-  }
-  
-  /* Tiers */
-  .card-tier-base {
-    border-color: rgba(148, 163, 184, 0.5);
-  }
-  
-  .card-tier-elite {
-    border-color: #facc15;
-    box-shadow:
-      0 0 15px rgba(250, 204, 21, 0.4),
-      0 10px 30px rgba(0, 0, 0, 0.8);
-  }
-  
-  .card-tier-legendary {
-    border-image: linear-gradient(135deg, #f97316, #facc15, #a855f7) 1;
-  }
-  
-  /* Accent stripe (e.g., team color) */
-  .card-accent-default::before,
-  .card-accent-chiefs::before,
-  .card-accent-49ers::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(135deg, rgba(59, 130, 246, 0.4), transparent);
-    mix-blend-mode: screen;
-    opacity: 0.6;
-    pointer-events: none;
-  }
-  
-  .card-accent-chiefs::before {
-    background: linear-gradient(135deg, rgba(220, 38, 38, 0.6), rgba(250, 204, 21, 0.6));
-  }
-  
-  .card-accent-49ers::before {
-    background: linear-gradient(135deg, rgba(185, 28, 28, 0.7), rgba(234, 179, 8, 0.7));
-  }
-  
+  position: relative;
+  padding: 1.25rem 1.3rem 1.2rem;
+  border-radius: 1.25rem;
+  background: radial-gradient(circle at top left, #1f2937 0, #020617 45%, #020617 100%);
+  color: #f9fafb;
+  box-shadow:
+    0 10px 30px rgba(0, 0, 0, 0.75),
+    0 0 0 1px rgba(255, 255, 255, 0.02);
+  overflow: hidden;
+  min-width: 260px;
+  max-width: 340px;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  backdrop-filter: blur(10px);
+}
+
+/* Tiers */
+.card-tier-base {
+  border-color: rgba(148, 163, 184, 0.5);
+}
+
+.card-tier-elite {
+  border-color: #facc15;
+  box-shadow:
+    0 0 15px rgba(250, 204, 21, 0.4),
+    0 10px 30px rgba(0, 0, 0, 0.8);
+}
+
+.card-tier-legendary {
+  border-image: linear-gradient(135deg, #f97316, #facc15, #a855f7) 1;
+  border-width: 2px;
+}
+
+/* Accent overlays (team flavor) */
+
+.card::before {
+  content: '';
+  position: absolute;
+  inset: -40%;
+  opacity: 0.55;
+  mix-blend-mode: screen;
+  pointer-events: none;
+  transition: opacity 0.2s ease-out, transform 0.2s ease-out;
+}
+
+.card-accent-default::before {
+  background: radial-gradient(circle at top left, rgba(59, 130, 246, 0.4), transparent);
+}
+
+.card-accent-chiefs::before {
+  background: conic-gradient(
+    from 210deg,
+    rgba(220, 38, 38, 0.6),
+    rgba(250, 204, 21, 0.5),
+    transparent
+  );
+}
+
+.card-accent-49ers::before {
+  background: conic-gradient(
+    from 200deg,
+    rgba(185, 28, 28, 0.7),
+    rgba(234, 179, 8, 0.6),
+    transparent
+  );
+}
+
+.card-accent-eagles::before {
+  background: radial-gradient(circle at top left, rgba(34, 197, 94, 0.6), transparent);
+}
+
+/* Hover effect */
+
+.card:hover::before {
+  opacity: 0.8;
+  transform: translateY(-4px);
+}
+
+.card:hover {
+  transform: translateY(-2px);
+  transition: transform 0.15s ease-out;
+}

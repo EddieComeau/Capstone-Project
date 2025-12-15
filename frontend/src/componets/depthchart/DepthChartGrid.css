@@ -1,0 +1,92 @@
+/* FRONTEND (React/Vite) — Styles for DepthChartGrid */
+
+.dcgrid {
+  width: 100%;
+  min-height: 520px;
+  border-radius: 18px;
+  border: 1px solid rgba(255,255,255,0.14);
+  background: radial-gradient(120% 120% at 15% 10%, rgba(255,255,255,0.10), rgba(0,0,0,0.35));
+  padding: 18px;
+  box-shadow: 0 18px 60px rgba(0,0,0,0.35);
+  display: grid;
+  gap: 16px;
+}
+
+.dcgrid--offense {
+  grid-template-columns: repeat(6, minmax(140px, 1fr));
+  grid-template-areas:
+    "LT LG C RG RT TE"
+    "WR1 HB QB FB WR2 WR2";
+}
+
+.dcgrid--defense {
+  grid-template-columns: repeat(4, minmax(140px, 1fr));
+  grid-template-areas:
+    "CB1 FS SS CB2"
+    "OLB MLB ILB ILB"
+    "DE1 DT1 DT2 DE2";
+}
+
+.dcgrid--st {
+  grid-template-columns: repeat(5, minmax(140px, 1fr));
+  grid-template-areas:
+    "K P LS KR PR";
+}
+
+.dcslot {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+.dcslot__label {
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.6px;
+  color: rgba(255,255,255,0.85);
+  text-transform: uppercase;
+  opacity: 0.9;
+}
+
+.dcslot__empty {
+  height: 110px;
+  width: 170px;
+  border-radius: 12px;
+  border: 1px dashed rgba(255,255,255,0.22);
+  background: rgba(0,0,0,0.20);
+  color: rgba(255,255,255,0.75);
+  font-weight: 800;
+  cursor: pointer;
+}
+
+@media (max-width: 980px) {
+  .dcgrid--offense {
+    grid-template-columns: repeat(3, minmax(140px, 1fr));
+    grid-template-areas:
+      "LT LG C"
+      "RG RT TE"
+      "WR1 HB QB"
+      "FB WR2 WR2";
+  }
+
+  .dcgrid--defense {
+    grid-template-columns: repeat(2, minmax(140px, 1fr));
+    grid-template-areas:
+      "CB1 FS"
+      "SS CB2"
+      "OLB MLB"
+      "ILB ILB"
+      "DE1 DT1"
+      "DT2 DE2";
+  }
+
+  .dcgrid--st {
+    grid-template-columns: repeat(2, minmax(140px, 1fr));
+    grid-template-areas:
+      "K P"
+      "LS KR"
+      "PR PR";
+  }
+}

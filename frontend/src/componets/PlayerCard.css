@@ -1,107 +1,106 @@
 /* src/components/PlayerCard.css */
 
 .player-card-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 0.75rem;
-  }
-  
-  .player-meta {
-    display: flex;
-    gap: 0.5rem;
-    font-size: 0.75rem;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: #9ca3af;
-  }
-  
-  .player-number {
-    font-size: 2rem;
-    font-weight: 800;
-    color: #e5e7eb;
-    text-shadow: 0 0 10px rgba(15, 23, 42, 0.8);
-  }
-  
-  .player-position {
-    padding: 0.1rem 0.4rem;
-    border-radius: 999px;
-    border: 1px solid rgba(148, 163, 184, 0.6);
-  }
-  
-  .player-team {
-    opacity: 0.9;
-  }
-  
-  .player-name {
-    font-size: 1.35rem;
-    font-weight: 700;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    margin-bottom: 0.35rem;
-  }
-  
-  .player-tier-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.25rem;
-    font-size: 0.7rem;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    padding: 0.25rem 0.6rem;
-    border-radius: 999px;
-    border: 1px solid rgba(250, 204, 21, 0.9);
-    background: rgba(250, 204, 21, 0.12);
-    color: #facc15;
-    margin-bottom: 0.9rem;
-  }
-  
-  .player-stats-grid {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 0.6rem;
-    margin-bottom: 1rem;
-  }
-  
-  .player-stat {
-    padding: 0.4rem 0.5rem;
-    border-radius: 0.75rem;
-    background: rgba(15, 23, 42, 0.7);
-    border: 1px solid rgba(55, 65, 81, 0.8);
-  }
-  
-  .player-stat .label {
-    display: block;
-    font-size: 0.65rem;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: #9ca3af;
-    margin-bottom: 0.15rem;
-  }
-  
-  .player-stat .value {
-    font-size: 0.95rem;
-    font-weight: 600;
-    color: #e5e7eb;
-  }
-  
-  .player-footer {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    font-size: 0.7rem;
-    color: #9ca3af;
-    opacity: 0.9;
-  }
-  
-  .player-id-chip {
-    padding: 0.2rem 0.5rem;
-    border-radius: 999px;
-    background: rgba(31, 41, 55, 0.9);
-  }
-  
-  .player-season-tag {
-    text-transform: uppercase;
-    letter-spacing: 0.12em;
-  }
-  
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.player-meta {
+  display: flex;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #9ca3af;
+}
+
+.player-number {
+  font-size: 2rem;
+  font-weight: 800;
+  color: #e5e7eb;
+  text-shadow: 0 0 10px rgba(15, 23, 42, 0.8);
+}
+
+.player-position {
+  padding: 0.1rem 0.4rem;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.6);
+}
+
+.player-team {
+  opacity: 0.9;
+}
+
+.player-name {
+  font-size: 1.35rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-bottom: 0.35rem;
+}
+
+.player-tier-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  padding: 0.25rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid rgba(250, 204, 21, 0.9);
+  background: rgba(250, 204, 21, 0.12);
+  color: #facc15;
+  margin-bottom: 0.9rem;
+}
+
+.player-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.6rem;
+  margin-bottom: 1rem;
+}
+
+.player-stat {
+  padding: 0.4rem 0.5rem;
+  border-radius: 0.75rem;
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid rgba(55, 65, 81, 0.8);
+}
+
+.player-stat .label {
+  display: block;
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #9ca3af;
+  margin-bottom: 0.15rem;
+}
+
+.player-stat .value {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #e5e7eb;
+}
+
+.player-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.7rem;
+  color: #9ca3af;
+  opacity: 0.9;
+}
+
+.player-id-chip {
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  background: rgba(31, 41, 55, 0.9);
+}
+
+.player-season-tag {
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}

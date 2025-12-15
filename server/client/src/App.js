@@ -1,10 +1,8 @@
-// server.js
+// app.js
 require("dotenv").config();
-
 const express = require("express");
 const morgan = require("morgan");
 const cors = require("cors");
-const mongoose = require("mongoose");
 
 // Existing routes
 const teamRoutes = require("./routes/teams");
@@ -16,19 +14,16 @@ const standingsRoutes = require("./routes/standings");
 const authRoutes = require("./routes/auth");
 const cardRoutes = require("./routes/cards");
 
-// NEW routes (Play By Play)
+// NEW
 const gamesRoutes = require("./routes/games");
 const playByPlayRoutes = require("./routes/playByPlay");
 
 const app = express();
-
 app.use(cors());
 app.use(express.json());
 app.use(morgan("dev"));
 
-app.get("/", (req, res) => {
-  res.json({ status: "ok", message: "NFL Cards backend is running" });
-});
+app.get("/", (req, res) => res.json({ status: "ok" }));
 
 app.use("/api/auth", authRoutes);
 app.use("/api/teams", teamRoutes);
@@ -44,25 +39,5 @@ app.use("/api/games", gamesRoutes);
 app.use("/api/playbyplay", playByPlayRoutes);
 
 app.use((req, res) => res.status(404).json({ error: "Not found" }));
-
-app.use((err, req, res, next) => {
-  console.error("Unhandled error:", err);
-  res.status(500).json({ error: "Internal server error" });
-});
-
-const PORT = process.env.PORT || 5000;
-const MONGO_URI =
-  process.env.MONGO_URI || "mongodb://localhost:27017/nflcards";
-
-mongoose
-  .connect(MONGO_URI)
-  .then(() => {
-    console.log("✅ Connected to MongoDB");
-    app.listen(PORT, () => console.log(`🚀 Server listening on ${PORT}`));
-  })
-  .catch((err) => {
-    console.error("❌ MongoDB connection error:", err.message);
-    process.exit(1);
-  });
 
 module.exports = app;

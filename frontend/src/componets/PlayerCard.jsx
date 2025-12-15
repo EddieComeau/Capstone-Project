@@ -3,13 +3,15 @@ import Card from './Card'
 import './PlayerCard.css'
 
 function PlayerCard({ player }) {
-  const { name, team, position, number, stats, tier } = player
+  const { name, team, position, number, stats = {}, tier = 'Base' } = player
 
   const accent =
     team === 'KC'
       ? 'chiefs'
       : team === 'SF'
       ? '49ers'
+      : team === 'PHI'
+      ? 'eagles'
       : 'default'
 
   return (

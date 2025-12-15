@@ -1,18 +1,24 @@
-// server/config/sportsdata.js
+// config/sportsdata.js
 require("dotenv").config();
 
-const BALLDONTLIE_BASE_URL =
-  process.env.BALLDONTLIE_BASE_URL || "https://api.balldontlie.io";
+// Backward compatible names:
+// - prefer BALLDONTLIE_*
+// - fall back to SPORTSDATA_* if you still have them set
+const SPORTS_DATA_BASE_URL =
+  process.env.BALLDONTLIE_NFL_BASE_URL ||
+  process.env.SPORTSDATA_BASE_URL ||
+  "https://api.balldontlie.io/nfl/v1";
 
-const BALLDONTLIE_API_KEY = process.env.BALLDONTLIE_API_KEY;
+const SPORTS_DATA_API_KEY =
+  process.env.BALLDONTLIE_API_KEY || process.env.SPORTSDATA_API_KEY;
 
-if (!BALLDONTLIE_API_KEY) {
+if (!SPORTS_DATA_API_KEY) {
   console.warn(
-    "[BallDontLie] Warning: BALLDONTLIE_API_KEY is not set in your .env file"
+    "[BALLDONTLIE] Warning: BALLDONTLIE_API_KEY (or SPORTSDATA_API_KEY fallback) is not set in your .env"
   );
 }
 
 module.exports = {
-  BALLDONTLIE_BASE_URL,
-  BALLDONTLIE_API_KEY,
+  SPORTS_DATA_BASE_URL,
+  SPORTS_DATA_API_KEY,
 };
