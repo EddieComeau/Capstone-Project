@@ -1,5 +1,5 @@
 // src/components/playbyplay/RetroField.jsx
-import React, { useMemo } from "react";
+import { useMemo } from "react";
 import { getTheme } from "../common/teamTheme";
 import "./playbyplay.css";
 
@@ -7,11 +7,34 @@ function clamp(n, a, b) {
   return Math.max(a, Math.min(b, n));
 }
 
-export default function RetroField({ plays = [], homeAbbr, awayAbbr }) {
+export default function RetroField({
+  plays = [],
+  homeAbbr,
+  awayAbbr,
+  ballSpot = 50,
+  currentDown = 1,
+  hasPenalty = false,
+}) {
   const homeTheme = getTheme(homeAbbr);
   const awayTheme = getTheme(awayAbbr);
 
   const vizPlays = useMemo(() => plays.slice(-40), [plays]);
+
+  const ballLeft = useMemo(() => {
+    const pct = clamp(Number(ballSpot ?? 50), 0, 100);
+    return pct;
+  }, [ballSpot]);
+
+  const downNumber = clamp(Number(currentDown ?? 1), 1, 4);
+
+  const refs = useMemo(
+    () => [
+      { left: 10, top: 40 },
+      { left: 50, top: 8 },
+      { left: 90, top: 40 },
+    ],
+    []
+  );
 
   return (
     <div
@@ -32,6 +55,35 @@ export default function RetroField({ plays = [], homeAbbr, awayAbbr }) {
           </div>
         ))}
       </div>
+
+      <div className="ballMarker" style={{ left: `${ballLeft}%` }}>
+        <div className="ballShape" />
+      </div>
+
+      <div className="downMarker" style={{ left: `${ballLeft}%` }}>
+        <div className="markerPole" />
+        <div className="markerFlag">{downNumber}</div>
+      </div>
+
+      <div className="digitalDownBox">
+        <div className="digitalDownFace">
+          <div className="digitalLabel">DOWN</div>
+          <div className="digitalDigit">{downNumber}</div>
+        </div>
+        <div className="digitalStick" />
+      </div>
+
+      {refs.map((r, idx) => (
+        <div
+          key={idx}
+          className={`referee ${hasPenalty ? "penalty" : ""}`}
+          style={{ left: `${r.left}%`, top: `${r.top}px` }}
+        >
+          <div className="refTorso" />
+          <div className="refArms" />
+          <div className="refLegs" />
+        </div>
+      ))}
 
       {vizPlays.map((p, idx) => {
         const start = clamp(Number(p.start_yard_line ?? 50), 0, 100);

@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" fill="none">
+  <rect width="1280" height="720" fill="#0f172a"/>
+  <rect x="30" y="30" width="1220" height="660" rx="16" fill="#161c35" stroke="#f8e71c" stroke-width="6"/>
+  <rect x="70" y="70" width="1140" height="80" rx="12" fill="#202a4f" stroke="#fff9c4" stroke-width="3"/>
+  <text x="120" y="120" fill="#9de2ff" font-family="'Press Start 2P', monospace" font-size="16">Scoreboard</text>
+  <text x="380" y="120" fill="#fff9c4" font-family="'Press Start 2P', monospace" font-size="16">Team A 21</text>
+  <text x="520" y="120" fill="#9de2ff" font-family="'Press Start 2P', monospace" font-size="16">Q3 02:13</text>
+  <text x="700" y="120" fill="#fff9c4" font-family="'Press Start 2P', monospace" font-size="16">Team B 17</text>
+  <rect x="80" y="180" width="1120" height="380" rx="18" fill="#1d2446" stroke="#fff" stroke-width="3"/>
+  <text x="120" y="220" fill="#f8e71c" font-family="'Press Start 2P', monospace" font-size="16">Retro Field</text>
+  <rect x="120" y="250" width="1040" height="270" rx="14" fill="#122d1c" stroke="#9de2ff" stroke-width="3" stroke-dasharray="10 6"/>
+  <text x="640" y="390" text-anchor="middle" fill="#9de2ff" font-family="'Press Start 2P', monospace" font-size="18">Big Play Reel Overlays</text>
+  <rect x="80" y="580" width="1120" height="90" rx="14" fill="#202a4f" stroke="#f8e71c" stroke-width="3" stroke-dasharray="12 8"/>
+  <text x="120" y="625" fill="#fff9c4" font-family="'Press Start 2P', monospace" font-size="16">Big Play Pop-ups</text>
+  <text x="480" y="625" fill="#9de2ff" font-family="'Press Start 2P', monospace" font-size="14">Touchdown • Turnover • First Down • FG</text>
+  <rect x="860" y="600" width="60" height="36" rx="8" fill="#f8e71c"/>
+  <text x="890" y="626" text-anchor="middle" fill="#0b0b1c" font-family="'Press Start 2P', monospace" font-size="14">Prev</text>
+  <rect x="940" y="600" width="60" height="36" rx="8" fill="#fff9c4"/>
+  <text x="970" y="626" text-anchor="middle" fill="#0b0b1c" font-family="'Press Start 2P', monospace" font-size="14">Next</text>
+  <rect x="1020" y="600" width="160" height="36" rx="8" fill="#9de2ff"/>
+  <text x="1100" y="626" text-anchor="middle" fill="#0b0b1c" font-family="'Press Start 2P', monospace" font-size="14">Lottie + SFX</text>
+</svg>

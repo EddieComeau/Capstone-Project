@@ -1,0 +1,198 @@
+.standingsWrap {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 12px;
+  }
+  
+  .standingsHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+  }
+  
+  .seasonPicker {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: #0b1c0b;
+    border: 2px solid #1b3d1c;
+    padding: 8px 10px;
+    border-radius: 12px;
+    font-weight: 700;
+  }
+  
+  .seasonPicker input {
+    background: #061006;
+    color: #e7f7e7;
+    border: 2px solid #1b3d1c;
+    border-radius: 10px;
+    padding: 6px 8px;
+    width: 100px;
+  }
+  
+  .standingsGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 12px;
+  }
+  
+  .standingsCard {
+    border: 2px solid #1b3d1c;
+    background: #071307;
+    border-radius: 16px;
+    overflow: hidden;
+  }
+  
+  .standingsCardHead {
+    padding: 10px;
+    background: linear-gradient(135deg, rgba(255,255,170,0.15), rgba(255,255,255,0.05));
+    border-bottom: 2px solid #1b3d1c;
+    font-weight: 900;
+    letter-spacing: 1px;
+  }
+  
+  .standingsTable {
+    display: grid;
+  }
+  
+  .standingsRow {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    padding: 10px 12px;
+    background: #061006;
+    color: inherit;
+    border: none;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+    text-align: left;
+    cursor: pointer;
+  }
+  
+  .standingsRow:last-child {
+    border-bottom: none;
+  }
+  
+  .standingsRow:hover,
+  .standingsRow.active {
+    background: rgba(101, 255, 101, 0.08);
+  }
+  
+  .teamName {
+    font-weight: 800;
+  }
+  
+  .record {
+    justify-self: end;
+    font-weight: 700;
+  }
+  
+  .rank {
+    justify-self: end;
+    font-weight: 900;
+  }
+  
+  .teamDetail {
+    border: 2px solid #1b3d1c;
+    border-radius: 16px;
+    padding: 12px;
+    background: #071307;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  
+  .teamDetailHead {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  
+  .teamDetailHead h2 {
+    margin: 0;
+  }
+  
+  .pill {
+    margin-left: auto;
+    padding: 6px 10px;
+    border-radius: 999px;
+    border: 2px solid #2c7a2c;
+    background: #0b1c0b;
+    font-weight: 800;
+  }
+  
+  .teamMetrics {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 10px;
+  }
+  
+  .metric {
+    background: #0b1c0b;
+    border: 2px solid #1b3d1c;
+    border-radius: 12px;
+    padding: 8px 10px;
+  }
+  
+  .metricValue {
+    font-weight: 900;
+  }
+  
+  .teamStatsPanel {
+    border-top: 1px solid rgba(255,255,255,0.07);
+    padding-top: 8px;
+    display: grid;
+    gap: 8px;
+  }
+  
+  .statRow {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: 700;
+  }
+  
+  .bar {
+    flex: 1;
+    position: relative;
+    height: 14px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.06);
+    overflow: hidden;
+    border: 2px solid #1b3d1c;
+  }
+  
+  .barFill {
+    position: absolute;
+    inset: 0;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #5adf71, #9cffc0);
+  }
+  
+  .barValue {
+    position: absolute;
+    top: 50%;
+    right: 8px;
+    transform: translateY(-50%);
+    font-size: 12px;
+    font-weight: 900;
+    text-shadow: 1px 1px 0 rgba(0,0,0,0.5);
+  }
+  
+  .standingsNotice {
+    padding: 8px 10px;
+    border-radius: 10px;
+    background: rgba(255,255,255,0.08);
+  }
+  
+  .standingsError {
+    padding: 8px 10px;
+    border-radius: 10px;
+    background: rgba(255,120,120,0.15);
+    border: 1px solid rgba(255,120,120,0.35);
+  }
+  
+  .muted {
+    opacity: 0.75;
+    font-size: 12px;
+  }

@@ -1,23 +1,27 @@
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import Lottie from "lottie-react";
 import PlayRoutesOverlay from "../overlays/PlayRoutesOverlay";
+import "./LottiePlaysBackground.css";
 
-export default function LottiePlaysBackground() {
-  const src = import.meta.env.VITE_HOME_BG_LOTTIE || "/lottie/football.json";
+export default function LottiePlaysBackground({ src }) {
   const [data, setData] = useState(null);
 
+  // Check for reduced motion preference
   const reduceMotion = useMemo(() => {
     if (typeof window === "undefined") return false;
     return window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
   }, []);
 
+  // Fetch Lottie animation data
   useEffect(() => {
     let alive = true;
     fetch(src)
-      .then((r) => r.json())
+      .then((response) => response.json())
       .then((json) => alive && setData(json))
       .catch(() => alive && setData(null));
-    return () => { alive = false; };
+    return () => {
+      alive = false;
+    };
   }, [src]);
 
   return (
@@ -30,7 +34,10 @@ export default function LottiePlaysBackground() {
           className="lottieFill"
         />
       ) : (
-        <div className="lottieFallback">Missing /lottie/football.json</div>
+        <div className="lottieFallback">
+          <div className="retroFrame">Retro highlight</div>
+          <div>Missing /lottie/football.json</div>
+        </div>
       )}
       <PlayRoutesOverlay />
     </div>

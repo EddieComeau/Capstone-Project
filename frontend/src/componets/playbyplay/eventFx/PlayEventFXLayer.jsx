@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import Lottie from "lottie-react";
 
-export default function PlayEventFXLayer({ activeFx }) {
+export default function PlayEventFXLayer({ activeFx, message, tag }) {
   const [data, setData] = useState(null);
 
   useEffect(() => {
@@ -23,11 +23,17 @@ export default function PlayEventFXLayer({ activeFx }) {
   if (!activeFx) return null;
 
   return (
-    <div className="fxOverlay" aria-hidden="true">
-      <div className={`fxBadge fx-${activeFx.type}`}>
-        {activeFx.type.replace("_", " ")}
+    <>
+      <div className="fxOverlay" aria-hidden="true" />
+      <div className="fxCard">
+        <div className={`fxBadge fx-${activeFx.type}`}>
+          {tag || activeFx.type.replace("_", " ")}
+        </div>
+        <div className="fxAnim">
+          {data ? <Lottie animationData={data} loop={false} autoplay /> : null}
+        </div>
+        {message ? <div className="fxMessage">{message}</div> : null}
       </div>
-      <div className="fxAnim">{data ? <Lottie animationData={data} loop={false} autoplay /> : null}</div>
-    </div>
+      </>
   );
 }

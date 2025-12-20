@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" fill="none">
+  <rect width="1280" height="720" fill="#111826"/>
+  <rect x="30" y="30" width="1220" height="660" rx="16" fill="#161c35" stroke="#f8e71c" stroke-width="5"/>
+  <text x="70" y="90" fill="#9de2ff" font-family="'Press Start 2P', monospace" font-size="18">Depth Chart · Player Inspector</text>
+  <rect x="70" y="120" width="520" height="540" rx="18" fill="#1f2d3d" stroke="#fff9c4" stroke-width="3"/>
+  <text x="90" y="160" fill="#f8e71c" font-family="'Press Start 2P', monospace" font-size="14">Positions</text>
+  <rect x="90" y="190" width="480" height="80" rx="12" fill="#202a4f" stroke="#9de2ff" stroke-width="2"/>
+  <text x="330" y="240" text-anchor="middle" fill="#fff" font-family="'Press Start 2P', monospace" font-size="14">QB1 · Retro Chip</text>
+  <rect x="90" y="290" width="480" height="80" rx="12" fill="#202a4f" stroke="#9de2ff" stroke-width="2"/>
+  <text x="330" y="340" text-anchor="middle" fill="#fff" font-family="'Press Start 2P', monospace" font-size="14">RB1 · Retro Chip</text>
+  <rect x="620" y="120" width="620" height="540" rx="18" fill="#1f2d3d" stroke="#fff" stroke-width="3"/>
+  <text x="650" y="160" fill="#f8e71c" font-family="'Press Start 2P', monospace" font-size="14">Inspector Tabs</text>
+  <rect x="650" y="180" width="560" height="60" rx="12" fill="#202a4f" stroke="#9de2ff" stroke-width="2"/>
+  <text x="680" y="215" fill="#fff" font-family="'Press Start 2P', monospace" font-size="12">Overview</text>
+  <text x="780" y="215" fill="#fff" font-family="'Press Start 2P', monospace" font-size="12">Advanced Stats</text>
+  <text x="940" y="215" fill="#fff" font-family="'Press Start 2P', monospace" font-size="12">Player vs Player</text>
+  <text x="1110" y="215" fill="#fff" font-family="'Press Start 2P', monospace" font-size="12">Team vs Team</text>
+  <rect x="650" y="260" width="560" height="180" rx="14" fill="#122d1c" stroke="#9de2ff" stroke-width="3"/>
+  <text x="930" y="310" text-anchor="middle" fill="#9de2ff" font-family="'Press Start 2P', monospace" font-size="14">Position-aware metrics (yards/route, air yards, success rate)</text>
+  <rect x="650" y="460" width="560" height="180" rx="14" fill="#202a4f" stroke="#fff9c4" stroke-width="3" stroke-dasharray="10 6"/>
+  <text x="930" y="520" text-anchor="middle" fill="#fff" font-family="'Press Start 2P', monospace" font-size="14">Player vs Player cards with dropdowns + scrollable graph rail</text>
+</svg>

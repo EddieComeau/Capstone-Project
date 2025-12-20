@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" fill="none">
+  <rect width="1280" height="720" fill="#0b0b1c"/>
+  <rect x="40" y="40" width="1200" height="640" fill="#181830" stroke="#f8e71c" stroke-width="10" stroke-dasharray="20 10"/>
+  <rect x="90" y="90" width="1100" height="540" fill="#242447" stroke="#fff9c4" stroke-width="6" stroke-dasharray="12 8"/>
+  <text x="640" y="200" text-anchor="middle" fill="#fff9c4" font-family="'Press Start 2P', monospace" font-size="44">SIDELINE STUDIO</text>
+  <text x="640" y="260" text-anchor="middle" fill="#f8e71c" font-family="'Press Start 2P', monospace" font-size="28">RETRO FOOTBALL INTRO</text>
+  <rect x="490" y="320" width="300" height="80" rx="12" fill="#f8e71c" stroke="#fff" stroke-width="4"/>
+  <text x="640" y="374" text-anchor="middle" fill="#0b0b1c" font-family="'Press Start 2P', monospace" font-size="24">START</text>
+  <text x="640" y="450" text-anchor="middle" fill="#fff" font-family="'Press Start 2P', monospace" font-size="16">Flashing marquee lines emulate an old Jumbotron with yellow/white pulses.</text>
+  <g fill="#f8e71c">
+    <circle cx="200" cy="600" r="6"/>
+    <circle cx="260" cy="600" r="6"/>
+    <circle cx="320" cy="600" r="6"/>
+    <circle cx="980" cy="600" r="6"/>
+    <circle cx="1040" cy="600" r="6"/>
+    <circle cx="1100" cy="600" r="6"/>
+  </g>
+  <text x="1080" y="120" text-anchor="end" fill="#9de2ff" font-family="'Press Start 2P', monospace" font-size="14">PORT 4000 PREVIEW</text>
+</svg>

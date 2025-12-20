@@ -2,7 +2,7 @@
 
 .dcPage {
   padding: 14px;
-  color: rgba(255,255,255,0.92);
+  color: rgba(255, 255, 255,0.92);
   font-family: ui-monospace, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
 }
 
@@ -28,9 +28,9 @@
 }
 
 .dcTab {
-  border: 2px solid rgba(255,255,255,0.18);
-  background: rgba(0,0,0,0.25);
-  color: rgba(255,255,255,0.92);
+  border: 2px solid rgba(255, 255, 255, 0.18);
+  background: rgba(0, 0, 0, 0.25);
+  color: rgba(255, 255, 255, 0.92);
   padding: 8px 12px;
   border-radius: 12px;
   font-weight: 900;
@@ -38,8 +38,20 @@
 }
 
 .dcTab.active {
-  background: rgba(255,255,255,0.12);
-  border-color: rgba(255,255,255,0.32);
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.32);
+}
+
+.dcLayout {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 16px;
+}
+
+.dcLeft{
+  display:flex;
+  flex-direction:column;
+  gap: 14px;
 }
 
 .dcGrid {
@@ -49,11 +61,25 @@
 }
 
 .dcCard {
-  border: 2px solid rgba(255,255,255,0.14);
-  background: rgba(0,0,0,0.25);
+  border: 2px solid rgba(255, 255, 255, 0.14);
+  background: rgba(0, 0, 0, 0.25);
   border-radius: 16px;
   padding: 10px;
-  box-shadow: 0 10px 20px rgba(0,0,0,0.25);
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.25);
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 0.12s ease, border 0.12s ease, box-shadow 0.12s ease;
+}
+
+.dcCard:hover {
+  transform: translateY(-2px);
+  border-color: rgba(255, 255, 255, 0.32);
+}
+
+.dcCard.active {
+  border-color: rgba(110, 231, 183, 0.6);
+  box-shadow: 0 10px 30px rgba(110, 231, 183, 0.18);
 }
 
 .dcTop {
@@ -78,4 +104,336 @@
 .dcMeta {
   opacity: 0.8;
   font-size: 12px;
+}
+
+.dcAvatar {
+  margin-top: 10px;
+  display: flex;
+  justify-content: flex-start;
+}
+
+.dcGraphRail{
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 16px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.04);
+}
+
+.graphHeader{ font-weight: 900; letter-spacing: 0.6px; margin-bottom: 4px; }
+.graphSub{ color: rgba(255,255,255,0.7); font-size: 13px; margin-bottom: 10px; }
+
+.sparkGrid{
+  display:grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 10px;
+}
+
+.sparkCard{
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 12px;
+  padding: 10px;
+  background: rgba(0,0,0,0.25);
+  display:flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sparkTitle{ font-weight: 800; }
+.sparkline{
+  display:flex;
+  align-items:flex-end;
+  gap: 6px;
+  height: 110px;
+  padding: 6px 4px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.08);
+}
+
+.sparkBar{
+  width: 14px;
+  border-radius: 10px 10px 2px 2px;
+  box-shadow: 0 6px 14px rgba(0,0,0,0.35);
+}
+
+.sparkMeta{ font-size: 12px; color: rgba(255,255,255,0.7); }
+
+.dcInspector {
+  position: sticky;
+  top: 78px;
+  align-self: start;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 16px;
+  padding: 14px;
+  background: rgba(10, 14, 28, 0.6);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.inspectorTop {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.inspectorName {
+  margin: 6px 0 4px 0;
+  font-size: 22px;
+}
+
+.inspectorMeta {
+  color: rgba(255, 255, 255, 0.75);
+  font-size: 13px;
+}
+
+.inspectorAvatar {
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 14px;
+  padding: 8px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.detailTabs {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+.detailTabs button {
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.92);
+  border-radius: 12px;
+  padding: 10px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.detailTabs button.active {
+  border-color: rgba(110, 231, 183, 0.5);
+  background: rgba(110, 231, 183, 0.14);
+}
+
+.inspectorCard {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 14px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.inspectorCardHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.inspectorGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+}
+
+.inspectorNote {
+  color: rgba(255, 255, 255, 0.75);
+  font-size: 13px;
+}
+
+.radialBadge {
+  width: 70px;
+  height: 70px;
+  border-radius: 50%;
+  border: 3px solid rgba(110, 231, 183, 0.5);
+  display: grid;
+  place-items: center;
+  background: radial-gradient(circle, rgba(110, 231, 183, 0.35), rgba(0, 0, 0, 0.65));
+  box-shadow: 0 10px 30px rgba(110, 231, 183, 0.2);
+}
+
+.radialValue {
+  font-size: 20px;
+  font-weight: 900;
+}
+
+.radialLabel {
+  font-size: 10px;
+  letter-spacing: 1px;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.advancedGrid {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.advancedRow {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.advancedMeta {
+  display: flex;
+  justify-content: space-between;
+  font-weight: 800;
+}
+
+.advancedBar {
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.advancedFill {
+  height: 100%;
+  background: linear-gradient(90deg, #fef08a, #a5f3fc, #86efac);
+  border-radius: 999px;
+}
+
+.pvpSelectRow label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-weight: 800;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.pvpSelectRow select {
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  padding: 8px;
+  background: rgba(0, 0, 0, 0.35);
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.pvpGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.pvpCard {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pvpHeader {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.pvpName {
+  font-weight: 900;
+}
+
+.pvpMeta {
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 12px;
+}
+
+.pvpStatRow {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.statBar {
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.statBar div {
+  height: 100%;
+  background: linear-gradient(90deg, #fde68a, #fca5a5, #c084fc);
+}
+
+.teamCompare {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.teamCompareRow {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.teamCompareLabel {
+  font-weight: 900;
+}
+
+.teamMeter {
+  position: relative;
+  height: 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.teamMeterFill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 999px;
+  opacity: 0.9;
+}
+
+.teamMeterFill.left {
+  left: 0;
+  background: linear-gradient(90deg, #bef264, #4ade80);
+}
+
+.teamMeterFill.right {
+  right: 0;
+  background: linear-gradient(270deg, #38bdf8, #c084fc);
+}
+
+.teamMeterCenter {
+  position: absolute;
+  inset: 0;
+  border-left: 1px dashed rgba(255, 255, 255, 0.35);
+  margin: 0 auto;
+  width: 1px;
+}
+
+.teamCompareValues {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+@media (max-width: 1100px) {
+  .dcLayout {
+    grid-template-columns: 1fr;
+  }
+
+  .dcInspector {
+    position: relative;
+    top: 0;
+  }
+
+  .detailTabs {
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  }
 }

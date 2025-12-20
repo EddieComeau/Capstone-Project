@@ -1,0 +1,135 @@
+.bettingWrap {
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  
+  .bettingHead {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  
+  .bettingControls {
+    display: flex;
+    gap: 8px;
+  }
+  
+  .armBtn,
+  .lockBtn,
+  .navBtn {
+    background: #123012;
+    color: #e7f7e7;
+    border: 2px solid #2c7a2c;
+    border-radius: 12px;
+    padding: 8px 12px;
+    cursor: pointer;
+    font-weight: 800;
+  }
+  
+  .bettingCarousel {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 10px;
+  }
+  
+  .bettingCard {
+    border: 2px solid #1b3d1c;
+    background: #071307;
+    border-radius: 16px;
+    padding: 12px;
+    display: grid;
+    gap: 10px;
+  }
+  
+  .bettingLottie {
+    width: 120px;
+    height: 120px;
+    justify-self: center;
+    filter: drop-shadow(0 6px 20px rgba(0,0,0,0.35));
+  }
+  
+  .bettingMatchup {
+    font-weight: 900;
+    letter-spacing: 1px;
+    text-align: center;
+  }
+  
+  .bettingLine {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 10px;
+    align-items: center;
+  }
+  
+  .label {
+    font-size: 12px;
+    opacity: 0.8;
+  }
+  
+  .value {
+    font-weight: 800;
+  }
+  
+  .confidence {
+    justify-self: end;
+    font-weight: 900;
+  }
+  
+  .props {
+    display: grid;
+    gap: 8px;
+  }
+  
+  .propRow {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 8px;
+    align-items: center;
+    background: #0b1c0b;
+    border: 2px solid #1b3d1c;
+    border-radius: 12px;
+    padding: 8px 10px;
+  }
+  
+  .meter {
+    position: relative;
+    width: 160px;
+    height: 12px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.08);
+    border: 2px solid #1b3d1c;
+  }
+  
+  .meterFill {
+    position: absolute;
+    inset: 0;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #ffde59, #9cffc0);
+  }
+  
+  .meterValue {
+    position: absolute;
+    right: 6px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 11px;
+    font-weight: 900;
+  }
+  
+  .lockBtn {
+    justify-self: center;
+    padding: 10px 16px;
+    border-color: #ffd54a;
+  }
+  
+  .navBtn {
+    width: 40px;
+    height: 40px;
+    display: grid;
+    place-items: center;
+    border-radius: 12px;
+  }
+  

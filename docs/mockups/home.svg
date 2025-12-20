@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" fill="none">
+  <rect width="1280" height="720" fill="#12122b"/>
+  <rect x="30" y="30" width="1220" height="660" fill="#181830" stroke="#f8e71c" stroke-width="6"/>
+  <text x="100" y="90" fill="#9de2ff" font-family="'Press Start 2P', monospace" font-size="18">Home · Kenney/Lottie Animation</text>
+  <rect x="70" y="120" width="540" height="260" rx="18" fill="#202045" stroke="#f8e71c" stroke-width="4"/>
+  <text x="340" y="170" text-anchor="middle" fill="#fff9c4" font-family="'Press Start 2P', monospace" font-size="20">KENNEY SPRITE LOOP</text>
+  <text x="340" y="210" text-anchor="middle" fill="#9de2ff" font-family="'Press Start 2P', monospace" font-size="14">Pixel QBs / RBs sprinting</text>
+  <rect x="70" y="420" width="1140" height="230" rx="18" fill="#202045" stroke="#fff" stroke-width="3" stroke-dasharray="10 8"/>
+  <text x="120" y="460" fill="#f8e71c" font-family="'Press Start 2P', monospace" font-size="16">Quick Links</text>
+  <rect x="140" y="490" width="200" height="90" rx="12" fill="#f8e71c" stroke="#fff" stroke-width="3"/>
+  <text x="240" y="545" text-anchor="middle" fill="#0b0b1c" font-family="'Press Start 2P', monospace" font-size="16">Depth Chart</text>
+  <rect x="390" y="490" width="200" height="90" rx="12" fill="#9de2ff" stroke="#fff" stroke-width="3"/>
+  <text x="490" y="545" text-anchor="middle" fill="#0b0b1c" font-family="'Press Start 2P', monospace" font-size="16">Play-by-Play</text>
+  <rect x="640" y="490" width="200" height="90" rx="12" fill="#fff9c4" stroke="#fff" stroke-width="3"/>
+  <text x="740" y="545" text-anchor="middle" fill="#0b0b1c" font-family="'Press Start 2P', monospace" font-size="16">Matchups</text>
+  <rect x="890" y="490" width="200" height="90" rx="12" fill="#f8e71c" stroke="#fff" stroke-width="3"/>
+  <text x="990" y="545" text-anchor="middle" fill="#0b0b1c" font-family="'Press Start 2P', monospace" font-size="16">Standings</text>
+  <rect x="680" y="120" width="530" height="260" rx="18" fill="#202045" stroke="#f8e71c" stroke-width="4"/>
+  <text x="945" y="170" text-anchor="middle" fill="#fff9c4" font-family="'Press Start 2P', monospace" font-size="20">LOTTIE HUDDLE</text>
+  <text x="945" y="210" text-anchor="middle" fill="#9de2ff" font-family="'Press Start 2P', monospace" font-size="14">Colorful confetti touchdown sequence</text>
+</svg>

@@ -1,0 +1,101 @@
+.injuryWrap {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 12px;
+  }
+  
+  .injuryHead {
+    border: 2px solid #1b3d1c;
+    background: #071307;
+    border-radius: 16px;
+    padding: 12px;
+    display: grid;
+    gap: 10px;
+  }
+  
+  .injuryForm {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 8px;
+  }
+  
+  .injuryForm input,
+  .injuryForm select,
+  .injuryForm button {
+    background: #0b1c0b;
+    color: #e7f7e7;
+    border: 2px solid #1b3d1c;
+    border-radius: 12px;
+    padding: 8px 10px;
+  }
+  
+  .injuryForm button {
+    cursor: pointer;
+    font-weight: 800;
+  }
+  
+  .injurySection {
+    border: 2px solid #1b3d1c;
+    background: #071307;
+    border-radius: 16px;
+    padding: 12px;
+    display: grid;
+    gap: 10px;
+  }
+  
+  .sectionHead {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  
+  .count {
+    background: #0b1c0b;
+    border: 2px solid #2c7a2c;
+    border-radius: 999px;
+    padding: 4px 10px;
+    font-weight: 900;
+  }
+  
+  .injuryList {
+    display: grid;
+    gap: 8px;
+  }
+  
+  .injuryCard {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 10px;
+    padding: 10px;
+    border-radius: 12px;
+    background: #0b1c0b;
+    border: 2px solid #1b3d1c;
+  }
+  
+  .injuryList.past .injuryCard {
+    grid-template-columns: 1fr;
+  }
+  
+  .player {
+    font-weight: 900;
+  }
+  
+  .meta {
+    font-size: 12px;
+    opacity: 0.8;
+  }
+  
+  .detail {
+    font-size: 13px;
+  }
+  
+  .resolveBtn {
+    background: #123012;
+    color: #e7f7e7;
+    border: 2px solid #2c7a2c;
+    border-radius: 12px;
+    padding: 8px 12px;
+    cursor: pointer;
+    height: fit-content;
+  }

@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" fill="none">
+  <rect width="1280" height="720" fill="#101828"/>
+  <rect x="30" y="30" width="1220" height="660" rx="16" fill="#161c35" stroke="#f8e71c" stroke-width="5"/>
+  <text x="80" y="90" fill="#9de2ff" font-family="'Press Start 2P', monospace" font-size="18">Standings · Betting · Injuries</text>
+  <rect x="70" y="120" width="560" height="240" rx="18" fill="#1f2d3d" stroke="#fff9c4" stroke-width="3"/>
+  <text x="90" y="160" fill="#f8e71c" font-family="'Press Start 2P', monospace" font-size="14">Standings Table</text>
+  <text x="90" y="190" fill="#fff" font-family="'Press Start 2P', monospace" font-size="12">Team · W-L · PF · PA · Conf</text>
+  <rect x="90" y="210" width="520" height="120" rx="12" fill="#202a4f" stroke="#9de2ff" stroke-width="2"/>
+  <text x="350" y="270" text-anchor="middle" fill="#9de2ff" font-family="'Press Start 2P', monospace" font-size="14">Click row to open team stats modal</text>
+  <rect x="70" y="380" width="560" height="280" rx="18" fill="#1f2d3d" stroke="#fff" stroke-width="3"/>
+  <text x="90" y="420" fill="#f8e71c" font-family="'Press Start 2P', monospace" font-size="14">Injury Center</text>
+  <text x="90" y="450" fill="#fff" font-family="'Press Start 2P', monospace" font-size="12">Tabs: Current · Resolved · Updates</text>
+  <rect x="90" y="470" width="520" height="160" rx="12" fill="#202a4f" stroke="#9de2ff" stroke-width="2"/>
+  <text x="350" y="530" text-anchor="middle" fill="#9de2ff" font-family="'Press Start 2P', monospace" font-size="14">Team-filtered injury cards + retro timeline</text>
+  <rect x="660" y="120" width="560" height="540" rx="18" fill="#1f2d3d" stroke="#fff9c4" stroke-width="3"/>
+  <text x="680" y="160" fill="#f8e71c" font-family="'Press Start 2P', monospace" font-size="14">Betting & Player Props</text>
+  <rect x="680" y="190" width="520" height="200" rx="14" fill="#202a4f" stroke="#9de2ff" stroke-width="2"/>
+  <text x="940" y="240" text-anchor="middle" fill="#fff" font-family="'Press Start 2P', monospace" font-size="14">Odds carousel with neon highlight</text>
+  <text x="940" y="280" text-anchor="middle" fill="#9de2ff" font-family="'Press Start 2P', monospace" font-size="12">BallDontLie sample props + celebratory Lottie when selected</text>
+  <rect x="680" y="420" width="520" height="220" rx="14" fill="#122d1c" stroke="#fff" stroke-width="3" stroke-dasharray="10 6"/>
+  <text x="940" y="480" text-anchor="middle" fill="#9de2ff" font-family="'Press Start 2P', monospace" font-size="14">Prop details: player card, trend sparkline, bet CTA</text>
+</svg>
