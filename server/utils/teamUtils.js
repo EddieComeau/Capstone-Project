@@ -27,13 +27,21 @@ async function ensureTeam(teamAbbrev) {
     
     // If not in database, fetch from Ball Don't Lie API
     console.log(`Fetching team ${teamAbbrev} from Ball Don't Lie API...`);
-    const teams = await bdlList("/teams", { abbreviation: teamAbbrev.toUpperCase() });
+    // Note: The Ball Don't Lie API doesn't support filtering by abbreviation in the query params,
+    // so we fetch teams and filter client-side. For a single team lookup, we could also use
+    // a direct team ID endpoint if available.
+    const teams = await bdlList("/teams", { per_page: 100 });
     
-    if (!teams || teams.length === 0) {
+    // Filter by abbreviation client-side
+    const matchingTeams = teams.filter(t => 
+      t.abbreviation && t.abbreviation.toUpperCase() === teamAbbrev.toUpperCase()
+    );
+    
+    if (!matchingTeams || matchingTeams.length === 0) {
       throw new Error(`Team ${teamAbbrev} not found in Ball Don't Lie API`);
     }
     
-    const teamData = teams[0];
+    const teamData = matchingTeams[0];
     
     // Create team document in database
     teamDoc = await Team.create({

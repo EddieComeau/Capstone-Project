@@ -18,6 +18,12 @@ async function syncTeamPlayers(teamAbbrev) {
   let upsertCount = 0;
 
   for (const p of players) {
+    // Validate critical fields
+    if (!p.id) {
+      console.warn(`⚠️ Skipping player with missing ID:`, p);
+      continue;
+    }
+    
     // Map Ball Don't Lie API response to Player model schema
     const update = {
       PlayerID: p.id,

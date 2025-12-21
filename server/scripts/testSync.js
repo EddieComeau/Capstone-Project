@@ -25,14 +25,21 @@ async function testSync(teamAbbrev = "KC") {
   
   // Step 1: Check environment variables
   console.log("📋 Step 1: Checking environment variables...");
-  const requiredEnvVars = ["MONGO_URI", "BALLDONTLIE_API_KEY", "BALLDONTLIE_NFL_BASE_URL"];
+  const requiredEnvVars = ["MONGO_URI", "BALLDONTLIE_API_KEY"];
+  const optionalEnvVars = ["BALLDONTLIE_NFL_BASE_URL"]; // Has a default fallback
   const missingVars = requiredEnvVars.filter(varName => !process.env[varName]);
   
   if (missingVars.length > 0) {
-    console.error("❌ Missing environment variables:", missingVars.join(", "));
+    console.error("❌ Missing required environment variables:", missingVars.join(", "));
     console.error("Please create a .env file with the required variables.");
     console.error("See .env.example for reference.");
     process.exit(1);
+  }
+  
+  // Check optional vars
+  const missingOptional = optionalEnvVars.filter(varName => !process.env[varName]);
+  if (missingOptional.length > 0) {
+    console.log("ℹ️  Using defaults for:", missingOptional.join(", "));
   }
   
   console.log("✅ All required environment variables are set\n");
