@@ -2,7 +2,8 @@ const axios = require("axios");
 
 // Function to make an API request to Ball Don't Lie NFL API
 async function bdlList(endpoint, params = {}) {
-  const baseUrl = process.env.BALLDONTLIE_NFL_BASE_URL || "https://api.balldontlie.io/v1/nfl";
+  // Base URL for Ball Don't Lie API (without version/sport paths)
+  const baseUrl = process.env.BALLDONTLIE_NFL_BASE_URL || "https://api.balldontlie.io";
   const apiKey = process.env.BALLDONTLIE_API_KEY;
 
   if (!apiKey) {
@@ -13,7 +14,7 @@ async function bdlList(endpoint, params = {}) {
     const response = await axios.get(`${baseUrl}${endpoint}`, {
       params,
       headers: {
-        Authorization: `Bearer ${apiKey}`,
+        Authorization: apiKey, // Ball Don't Lie uses direct API key in Authorization header
       },
     });
     

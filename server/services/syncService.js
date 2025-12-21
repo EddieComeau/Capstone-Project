@@ -10,7 +10,8 @@ async function syncTeamPlayers(teamAbbrev) {
 
   console.log(`Fetching players for team ${teamAbbrev} (ID: ${raw.id})...`);
   
-  const players = await bdlList("/players/active", {
+  // Use the correct Ball Don't Lie API endpoint: /v1/nfl/players
+  const players = await bdlList("/v1/nfl/players", {
     team_ids: [raw.id],
     per_page: 100,
   });

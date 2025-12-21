@@ -27,10 +27,8 @@ async function ensureTeam(teamAbbrev) {
     
     // If not in database, fetch from Ball Don't Lie API
     console.log(`Fetching team ${teamAbbrev} from Ball Don't Lie API...`);
-    // Note: The Ball Don't Lie API doesn't support filtering by abbreviation in the query params,
-    // so we fetch teams and filter client-side. For a single team lookup, we could also use
-    // a direct team ID endpoint if available.
-    const teams = await bdlList("/teams", { per_page: 100 });
+    // Use the correct Ball Don't Lie API endpoint: /v1/nfl/teams
+    const teams = await bdlList("/v1/nfl/teams", { per_page: 100 });
     
     // Filter by abbreviation client-side
     const matchingTeams = teams.filter(t => 
