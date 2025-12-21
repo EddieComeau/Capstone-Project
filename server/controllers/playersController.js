@@ -1,6 +1,7 @@
 // server/controllers/playersController.js
 const Player = require("../models/Player");
 const { syncTeamPlayers } = require("../services/syncService");
+const { fetchPlayersFromBallDontLie } = require("../services/ballDontLieService");
 
 /**
  * GET /api/players
@@ -71,9 +72,79 @@ async function syncPlayersForTeam(req, res, next) {
   }
 }
 
+// POST /api/players/sync
+async function syncPlayers(req, res) {
+  try {
+    let page = 1;
+    let totalPlayersSynced = 0;
+    let hasMorePlayers = true;
+
+    console.log("⏳ Starting player sync from Ball Don't Lie...");
+
+    while (hasMorePlayers) {
+      // Fetch players for the current page
+      const players = await fetchPlayersFromBallDontLie(page);
+
+      // Log the fetched players for debugging
+      console.log(`✅ Fetched ${players.data.length} players from page ${page}`);
+
+      // Ensure players.data is an array and filter out invalid entries
+      const validPlayers = players.data.filter((player) => player && player.id);
+
+      // Prepare bulk operations
+      const bulkOperations = validPlayers.map((player) => ({
+        updateOne: {
+          filter: { PlayerID: player.id }, // Match by PlayerID
+          update: {
+            $set: {
+              PlayerID: player.id,
+              FullName: `${player.first_name || ""} ${player.last_name || ""}`.trim(), // Handle missing names
+              FirstName: player.first_name || "Unknown", // Default to "Unknown" if no first name
+              LastName: player.last_name || "Unknown", // Default to "Unknown" if no last name
+              Team: player.team?.abbreviation || "FA", // Default to "FA" (Free Agent) if no team
+              Position: player.position || "Unknown", // Default to "Unknown" if no position
+              Status: player.status || "Unknown", // Default to "Unknown" if no status
+              raw: player, // Store the raw data for reference
+            },
+          },
+          upsert: true, // Insert if the document does not exist
+        },
+      }));
+
+      // Execute bulk write
+      if (bulkOperations.length > 0) {
+        const bulkWriteResult = await Player.bulkWrite(bulkOperations);
+        console.log(
+          `✅ Bulk write completed: ${bulkWriteResult.modifiedCount} players updated, ${bulkWriteResult.upsertedCount} players inserted.`
+        );
+      } else {
+        console.log(`⚠️ No valid players to process on page ${page}.`);
+      }
+
+      // Update the total players synced
+      totalPlayersSynced += validPlayers.length;
+
+      // Check if there are more players to fetch
+      hasMorePlayers = players.meta && players.meta.next_page !== null;
+      if (!hasMorePlayers) {
+        console.log("✅ All active players have been scanned. Stopping sync.");
+      }
+
+      page++; // Move to the next page
+    }
+
+    console.log(`✅ Successfully synced ${totalPlayersSynced} players!`);
+    res.status(200).json({ message: `Players synced successfully! Total: ${totalPlayersSynced}` });
+  } catch (error) {
+    console.error("❌ Error syncing players:", error.message);
+    res.status(500).json({ error: "Failed to sync players", details: error.message });
+  }
+}
+
 module.exports = {
   getAllPlayers,
   getPlayerById,
   getPlayersByTeam,
   syncPlayersForTeam,
+  syncPlayers,
 };

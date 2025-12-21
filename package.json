@@ -18,6 +18,7 @@
   },
   "homepage": "https://github.com/EddieComeau/Capstone-Project#readme",
   "dependencies": {
+    "@balldontlie/sdk": "^1.2.2",
     "axios": "^1.13.2",
     "lottie-react": "^2.4.1",
     "node": "^24.12.0",

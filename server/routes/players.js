@@ -7,6 +7,7 @@ const {
   getPlayerById,
   getPlayersByTeam,
   syncPlayersForTeam,
+  syncPlayers,
 } = require("../controllers/playersController");
 
 // GET /api/players
@@ -20,5 +21,8 @@ router.get("/team/:team", getPlayersByTeam);
 
 // POST /api/players/sync/:team
 router.post("/sync/:team", syncPlayersForTeam);
+
+// POST /api/players/sync
+router.post("/sync", syncPlayers);
 
 module.exports = router;

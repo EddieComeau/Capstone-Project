@@ -1,0 +1,65 @@
+/* Style for the Prototype Page container */
+.prototypePage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background-color: #f5f5f5; /* Light gray background */
+  min-height: 100vh; /* Full viewport height */
+}
+
+/* Style for the card container */
+.cardContainer {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 20px;
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+/* Style for individual cards */
+.card {
+  background-color: #ffffff; /* White background */
+  border: 1px solid #ddd; /* Light border */
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); /* Subtle shadow */
+  padding: 16px;
+  text-align: center;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.card:hover {
+  transform: translateY(-5px); /* Slight lift on hover */
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2); /* Stronger shadow on hover */
+}
+
+/* Style for card titles */
+.cardTitle {
+  font-size: 1.2rem;
+  font-weight: bold;
+  margin-bottom: 8px;
+}
+
+/* Style for card content */
+.cardContent {
+  font-size: 1rem;
+  color: #555; /* Subtle text color */
+}
+
+/* Add any additional styles for buttons or other elements */
+.cardButton {
+  margin-top: 12px;
+  padding: 8px 16px;
+  background-color: #007bff; /* Blue button */
+  color: #ffffff;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.cardButton:hover {
+  background-color: #0056b3; /* Darker blue on hover */
+}
