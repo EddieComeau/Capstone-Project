@@ -13,16 +13,16 @@ const {
 // GET /api/players
 router.get("/", getAllPlayers);
 
+// ✅ Put specific routes BEFORE "/:id"
+router.get("/team/:team", getPlayersByTeam);
+
 // GET /api/players/:id
 router.get("/:id", getPlayerById);
 
-// GET /api/players/team/:team
-router.get("/team/:team", getPlayersByTeam);
+// POST /api/players/sync
+router.post("/sync", syncPlayers);
 
 // POST /api/players/sync/:team
 router.post("/sync/:team", syncPlayersForTeam);
-
-// POST /api/players/sync
-router.post("/sync", syncPlayers);
 
 module.exports = router;

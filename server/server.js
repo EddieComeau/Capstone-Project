@@ -1,8 +1,9 @@
+// server/server.js
 const express = require("express");
 const morgan = require("morgan");
 const cors = require("cors");
 const mongoose = require("mongoose");
-require("dotenv").config(); // Load environment variables
+require("dotenv").config();
 
 // Import routes
 const teamRoutes = require("./routes/teams");
@@ -16,16 +17,15 @@ const cardRoutes = require("./routes/cards");
 const gamesRoutes = require("./routes/games");
 const playByPlayRoutes = require("./routes/playbyplay");
 
-// Import sync function
-const { syncPlayers } = require("./controllers/playersController");
+// ✅ Import the JOB (not the Express handler)
+const { syncPlayersJob } = require("./controllers/playersController");
 
-// Initialize app
 const app = express();
 
 // Middleware
-app.use(cors({ origin: process.env.CORS_ORIGIN || "*" })); // Use CORS with dynamic origin
+app.use(cors({ origin: process.env.CORS_ORIGIN || "*" }));
 app.use(express.json());
-app.use(morgan("dev")); // Log HTTP requests
+app.use(morgan("dev"));
 
 // Database connection
 const MONGO_URI = process.env.MONGO_URI || "mongodb://localhost:27017/nfl_cards";
@@ -36,19 +36,25 @@ const connectWithRetry = () => {
     .then(() => {
       console.log("✅ Connected to MongoDB");
 
-      if (process.env.SYNC_ON_STARTUP === "true") {
+      // ✅ Optional: run sync at startup safely
+      if (String(process.env.SYNC_ON_STARTUP || "false").toLowerCase() === "true") {
         console.log("⏳ Syncing players from Ball Don't Lie...");
-        syncPlayers()
-          .then(() => console.log("✅ Players synced successfully on startup"))
+
+        syncPlayersJob()
+          .then(({ totalPlayersSynced }) => {
+            console.log(
+              `✅ Players synced successfully on startup (processed: ${totalPlayersSynced})`
+            );
+          })
           .catch((err) => {
             console.error("❌ Failed to sync players on startup:", err.message);
-            console.error("Full error:", err); // Log the full error object for debugging
+            console.error("Full error:", err);
           });
       }
     })
     .catch((err) => {
       console.error("❌ MongoDB connection failed. Retrying in 5 seconds...", err.message);
-      setTimeout(connectWithRetry, 5000); // Retry after 5 seconds
+      setTimeout(connectWithRetry, 5000);
     });
 };
 
@@ -61,11 +67,7 @@ app.get("/", (req, res) => {
 
 app.get("/health", async (req, res) => {
   const dbStatus = mongoose.connection.readyState === 1 ? "connected" : "disconnected";
-  res.json({
-    status: "ok",
-    database: dbStatus,
-    message: "Sideline Studio backend is healthy",
-  });
+  res.json({ status: "ok", database: dbStatus });
 });
 
 app.use("/api/auth", authRoutes);
@@ -89,7 +91,7 @@ app.use((err, req, res, next) => {
 });
 
 // Start server
-const PORT = process.env.PORT || 4000; // Default to port 4000
+const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => {
   console.log(`🚀 Server is running on http://localhost:${PORT}`);
 });
