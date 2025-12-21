@@ -1,0 +1,108 @@
+.homePage {
+  position: relative;
+  width: 100%;
+  height: 500px;
+  background-color: #0f3b16; /* Fallback color */
+}
+
+.homeWrap {
+  position: relative;
+  width: 100%;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.homeBg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: -1;
+}
+
+.bgOverlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.bgGrid {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-image: linear-gradient(to right, rgba(255, 255, 255, 0.1) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.1) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+.homeContent {
+  position: relative;
+  z-index: 1;
+  padding: 20px;
+  text-align: center;
+}
+
+.homeHero {
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.homeTitle {
+  font-size: 2.5rem;
+  color: #fff;
+}
+
+.homeText {
+  font-size: 1.2rem;
+  color: #ddd;
+}
+
+.primaryBtn,
+.ghostBtn {
+  margin: 10px;
+  padding: 10px 20px;
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+.primaryBtn {
+  background-color: #007bff;
+  color: #fff;
+  border: none;
+}
+
+.primaryBtn.alt {
+  background-color: #28a745;
+}
+
+.ghostBtn {
+  background-color: transparent;
+  color: #fff;
+  border: 1px solid #fff;
+}
+
+.modeRow {
+  margin-top: 20px;
+}
+
+.modeLabel {
+  font-size: 1rem;
+  color: #fff;
+}
+
+.modeBtn {
+  margin: 5px;
+  padding: 5px 10px;
+  cursor: pointer;
+}
+
+.modeBtn.active {
+  background-color: #007bff;
+  color: #fff;
+}
