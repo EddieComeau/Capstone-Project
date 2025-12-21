@@ -92,24 +92,31 @@ async function syncPlayers(req, res) {
       const validPlayers = players.data.filter((player) => player && player.id);
 
       // Prepare bulk operations
-      const bulkOperations = validPlayers.map((player) => ({
-        updateOne: {
-          filter: { PlayerID: player.id }, // Match by PlayerID
-          update: {
-            $set: {
-              PlayerID: player.id,
-              FullName: `${player.first_name || ""} ${player.last_name || ""}`.trim(), // Handle missing names
-              FirstName: player.first_name || "Unknown", // Default to "Unknown" if no first name
-              LastName: player.last_name || "Unknown", // Default to "Unknown" if no last name
-              Team: player.team?.abbreviation || "FA", // Default to "FA" (Free Agent) if no team
-              Position: player.position || "Unknown", // Default to "Unknown" if no position
-              Status: player.status || "Unknown", // Default to "Unknown" if no status
-              raw: player, // Store the raw data for reference
+      const bulkOperations = validPlayers.map((player) => {
+        // Log a warning if the player's position is unknown
+        if (!player.position) {
+          console.log(`⚠️ Player ${player.first_name} ${player.last_name} has an unknown position.`);
+        }
+
+        return {
+          updateOne: {
+            filter: { PlayerID: player.id }, // Match by PlayerID
+            update: {
+              $set: {
+                PlayerID: player.id,
+                FullName: `${player.first_name || ""} ${player.last_name || ""}`.trim(), // Handle missing names
+                FirstName: player.first_name || "Unknown", // Default to "Unknown" if no first name
+                LastName: player.last_name || "Unknown", // Default to "Unknown" if no last name
+                Team: player.team?.abbreviation || "FA", // Default to "FA" (Free Agent) if no team
+                Position: player.position || "Unknown", // Default to "Unknown" if no position
+                Status: player.status || "Unknown", // Default to "Unknown" if no status
+                raw: player, // Store the raw data for reference
+              },
             },
+            upsert: true, // Insert if the document does not exist
           },
-          upsert: true, // Insert if the document does not exist
-        },
-      }));
+        };
+      });
 
       // Execute bulk write
       if (bulkOperations.length > 0) {
