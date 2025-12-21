@@ -2,7 +2,7 @@ const { MongoClient } = require("mongodb");
 const { BalldontlieAPI } = require("@balldontlie/sdk");
 require("dotenv").config();
 
-const uri = "mongodb://"
+const uri = process.env.MONGO_URI || "mongodb://localhost:27017/nfl_cards";
 const client = new MongoClient(uri);
 
 const apiKey = process.env.BALLDONTLIE_API_KEY; // Ensure this is set in your .env file
