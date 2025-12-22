@@ -3,14 +3,11 @@ const mongoose = require("mongoose");
 /**
  * Player model
  *
- * NOTE: This schema has been migrated to match the Ball Don't Lie (BDL)
- * field format used by syncService.
- *
  * Fields:
  *  - bdlId: Number (BDL player id)
  *  - first_name, last_name, full_name: Strings
  *  - position: String
- *  - team: Mixed (BDL team payload as stored by syncService)
+ *  - team: Object (BDL team payload)
  *  - raw: Mixed (entire BDL player payload for forward compatibility)
  *  - createdAt / updatedAt: timestamps
  */
@@ -45,14 +42,19 @@ const PlayerSchema = new mongoose.Schema(
 
     position: {
       type: String,
+      enum: ["QB", "RB", "WR", "TE", "K", "P", "DL", "LB", "DB", ""], // Add valid positions
       default: "",
       trim: true,
     },
 
     team: {
-      // Team object from BDL (shape may change; keep flexible)
-      type: mongoose.Schema.Types.Mixed,
-      default: null,
+      id: Number,
+      abbreviation: String,
+      full_name: String,
+      conference: String,
+      division: String,
+      location: String,
+      name: String,
     },
 
     raw: {
@@ -65,5 +67,22 @@ const PlayerSchema = new mongoose.Schema(
     timestamps: true,
   }
 );
+
+// Virtual for team name
+PlayerSchema.virtual("team_name").get(function () {
+  return this.team?.full_name || "Free Agent";
+});
+
+// Pre-save hook to normalize data
+PlayerSchema.pre("save", function (next) {
+  if (this.first_name && this.last_name) {
+    this.full_name = `${this.first_name} ${this.last_name}`.trim();
+  }
+  next();
+});
+
+// Add indexes for common queries
+PlayerSchema.index({ position: 1 });
+PlayerSchema.index({ "team.id": 1 });
 
 module.exports = mongoose.model("Player", PlayerSchema);
