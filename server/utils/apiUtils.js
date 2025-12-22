@@ -32,8 +32,8 @@ async function bdlList(endpoint, params = {}) {
       },
     });
     
-    // Return the data array from the response
-    return response.data.data || response.data;
+    // Return the full response object to preserve metadata (including next_cursor)
+    return response.data;
   } catch (error) {
     console.error(`Error fetching data from ${endpoint}:`, error.message);
     if (error.response) {
