@@ -30,9 +30,15 @@ async function syncPlayers(options = {}, { PlayerModel } = {}) {
   // limit safety to avoid infinite loops
   const maxPages = Number(options.maxPages || 50);
   let pageCount = 0;
+  let previousCursor = null;
+
+  console.log('Starting syncPlayers...');
 
   while (pageCount < maxPages) {
     pageCount += 1;
+
+    // Log the cursor on each request for debugging
+    console.log(`📄 Fetching page ${pageCount}, cursor: ${cursor || 'null (first page)'}`);
 
     const params = { ...options, per_page };
     if (cursor) params.cursor = cursor;
@@ -44,6 +50,14 @@ async function syncPlayers(options = {}, { PlayerModel } = {}) {
 
     const players = Array.isArray(data) ? data : [];
     fetched += players.length;
+
+    console.log(`   Received ${players.length} players`);
+
+    // Guard: Break if cursor didn't change (stuck in loop)
+    if (cursor && cursor === previousCursor) {
+      console.warn(`⚠️ Cursor didn't change, breaking to prevent infinite loop`);
+      break;
+    }
 
     for (const p of players) {
       // Normalize a minimal schema to what we likely store.
@@ -70,9 +84,20 @@ async function syncPlayers(options = {}, { PlayerModel } = {}) {
     // Cursor-based pagination in BDL often uses meta.next_cursor.
     const nextCursor = meta.next_cursor || meta.nextCursor || null;
 
-    if (!nextCursor || players.length === 0) break;
+    console.log(`   Next cursor: ${nextCursor || 'null (last page)'}`);
+
+    // Guard: Break if no more pages (cursor is null or no players returned)
+    if (!nextCursor || players.length === 0) {
+      console.log(`✅ Reached end of pagination (${nextCursor ? 'no players' : 'no next_cursor'})`);
+      break;
+    }
+
+    // Store previous cursor and update to next
+    previousCursor = cursor;
     cursor = nextCursor;
   }
+
+  console.log(`✅ Synced ${synced} players in ${pageCount} pages`);
 
   return {
     ok: true,
