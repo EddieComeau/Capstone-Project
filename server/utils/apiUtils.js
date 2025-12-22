@@ -1,11 +1,8 @@
 // server/utils/apiUtils.js
-// Shared API utilities
-
 const axios = require('axios');
 
 /**
  * Build a backend-relative URL path safely.
- * NOTE: Frontend should use frontend/src/lib/api.js; server uses absolute URLs.
  */
 function joinUrl(base, path) {
   if (!base) return path;
@@ -13,39 +10,57 @@ function joinUrl(base, path) {
 }
 
 /**
- * Function to make an API request to Ball Don't Lie NFL API
+ * Serialize params so arrays become name[]=a&name[]=b (per API docs).
+ */
+function serializeParams(params = {}) {
+  const sp = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (v === undefined || v === null) continue;
+    if (Array.isArray(v)) {
+      for (const item of v) {
+        // Use the bracketed name so we get team_ids[]=1&team_ids[]=2
+        sp.append(`${k}[]`, String(item));
+      }
+    } else {
+      sp.append(k, String(v));
+    }
+  }
+  return sp.toString();
+}
+
+/**
+ * Make a request to Ball Don't Lie NFL API.
  *
  * Conventions:
- * - Default base URL is https://api.balldontlie.io/v1
- * - Callers should pass endpoints like '/nfl/players' (no repeated /v1)
- * - This helper returns the parsed response body (which should include `data` and `meta` where present)
+ * - Default base: https://api.balldontlie.io
+ * - Callers should pass endpoints like '/nfl/v1/players'
+ * - This returns response.data (so { data, meta } is preserved)
  */
 async function bdlList(endpoint, params = {}) {
-  // Pick base URL explicitly; allow older variable names for backwards compatibility.
   const baseUrl = process.env.BALLDONTLIE_NFL_BASE_URL
     || process.env.BALLDONTLIE_BASE_URL
-    || "https://api.balldontlie.io/v1";
+    || "https://api.balldontlie.io";
 
-  // Accept a few common API key env var names
   const apiKey = process.env.BALLDONTLIE_API_KEY || process.env.BDL_API_KEY || process.env.BDL_KEY;
-
   if (!apiKey) {
     throw new Error("BALLDONTLIE_API_KEY is not set in environment variables");
   }
 
-  try {
-    const url = `${baseUrl}${endpoint}`;
-    const response = await axios.get(url, {
-      params,
-      headers: {
-        Authorization: apiKey, // Ball Don't Lie uses direct API key in Authorization header (project convention)
-      },
-    });
+  const qs = serializeParams(params);
+  const url = `${baseUrl}${endpoint}${qs ? `?${qs}` : ''}`;
 
-    // Return the parsed response body (may have .data and .meta fields)
+  try {
+    const response = await axios.get(url, {
+      headers: {
+        Authorization: apiKey,
+        Accept: 'application/json',
+      },
+      timeout: Number(process.env.BDL_TIMEOUT_MS || 30000),
+    });
+    // return the parsed body (should include .data and .meta when provided by BDL)
     return response.data;
   } catch (error) {
-    console.error(`Error fetching data from ${endpoint}:`, error.message);
+    console.error(`Error fetching data from ${url}:`, error.message);
     if (error.response) {
       console.error("Response status:", error.response.status);
       console.error("Response data:", error.response.data);
