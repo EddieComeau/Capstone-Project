@@ -4,7 +4,7 @@
 const axios = require('axios');
 
 const BASE_URL = process.env.BDL_BASE_URL || 'https://api.balldontlie.io';
-const VERSION_PREFIX = process.env.BDL_VERSION_PREFIX || '/api/v1';
+const VERSION_PREFIX = process.env.BDL_VERSION_PREFIX || '/v1';
 
 function getClient() {
   const apiKey = process.env.BALLDONTLIE_API_KEY || process.env.BDL_API_KEY;
@@ -25,29 +25,29 @@ function getClient() {
 }
 
 /**
- * OpenAPI: GET /nfl/v1/players
+ * OpenAPI: GET /v1/nfl/players
  */
 async function listPlayers(params = {}) {
   const client = getClient();
-  const res = await client.get('/nfl/v1/players', { params });
+  const res = await client.get('/nfl/players', { params });
   return res.data;
 }
 
 /**
- * OpenAPI: GET /nfl/v1/players/{id}
+ * OpenAPI: GET /v1/nfl/players/{id}
  */
 async function getPlayer(id) {
   const client = getClient();
-  const res = await client.get(`/nfl/v1/players/${id}`);
+  const res = await client.get(`/nfl/players/${id}`);
   return res.data;
 }
 
 /**
- * OpenAPI: GET /nfl/v1/teams
+ * OpenAPI: GET /v1/nfl/teams
  */
 async function listTeams(params = {}) {
   const client = getClient();
-  const res = await client.get('/nfl/v1/teams', { params });
+  const res = await client.get('/nfl/teams', { params });
   return res.data;
 }
 

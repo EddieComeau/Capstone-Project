@@ -6,6 +6,7 @@ const express = require('express');
 const cors = require('cors');
 
 const connectDB = require('./db');
+const { syncPlayers } = require('./services/syncService');
 
 const playersRoutes = require('./routes/players');
 
@@ -31,6 +32,22 @@ const PORT = Number(process.env.PORT || 5000);
     }
 
     await connectDB(mongoUri);
+
+    // Check if SYNC_ON_STARTUP is enabled
+    const shouldSyncOnStartup = process.env.SYNC_ON_STARTUP === 'true';
+    
+    if (shouldSyncOnStartup) {
+      console.log(`🔄 SYNC_ON_STARTUP is enabled, syncing players from Ball Don't Lie...`);
+      try {
+        const result = await syncPlayers();
+        console.log(`✅ Startup sync completed: ${result.synced} players synced in ${result.pages} pages`);
+      } catch (syncErr) {
+        console.error('⚠️ Startup sync failed:', syncErr.message);
+        console.error('Server will continue to start, but data may not be up to date.');
+      }
+    } else {
+      console.log('ℹ️ SYNC_ON_STARTUP is disabled. Set SYNC_ON_STARTUP=true in .env to enable automatic syncing.');
+    }
 
     app.listen(PORT, () => {
       console.log(`Server listening on port ${PORT}`);
