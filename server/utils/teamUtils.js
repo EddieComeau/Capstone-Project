@@ -1,8 +1,8 @@
 // server/utils/teamUtils.js
 
 const ballDontLieService = require('../services/ballDontLieService');
-const Team = require("../models/Team");
-const { bdlList } = require("./apiUtils");
+const Team = require('../models/Team');
+const { bdlList } = require('./apiUtils');
 
 async function fetchTeams(params = {}) {
   const payload = await ballDontLieService.listTeams(params);
