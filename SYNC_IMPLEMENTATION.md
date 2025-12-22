@@ -186,3 +186,60 @@ If issues arise:
 3. Check MongoDB is running
 4. Verify Ball Don't Lie API key is valid
 5. Review console logs for specific error messages
+
+---
+
+## Update: Cursor-Based Pagination Fix (December 2024)
+
+### Problem Identified
+The sync was getting stuck in an infinite loop, fetching the same 100 players repeatedly:
+- Cursor wasn't advancing properly between requests
+- No logging to debug pagination issues
+- No guards to detect stuck cursors
+- Team/active filters may have been interfering with pagination
+
+### Solution Implemented
+
+#### 1. Fixed `server/utils/apiUtils.js`
+- Changed `bdlList()` to return the **full response object** including metadata
+- Previously only returned the data array, losing pagination metadata with `next_cursor`
+
+#### 2. Enhanced `server/services/syncService.js`
+- **`syncTeamPlayers()`**: Added proper cursor-based pagination loop
+  - Logs cursor value on each request for debugging
+  - Tracks `previousCursor` to detect if cursor gets stuck
+  - Guards to break if cursor doesn't change or is null
+  - Temporarily removed `team_ids` filter to confirm pagination works
+  - Processes all pages until `next_cursor` is null
+
+- **`syncPlayers()`**: Added same improvements
+  - Cursor logging on each request
+  - Previous cursor tracking
+  - Guards against infinite loops
+
+#### 3. Updated `server/utils/teamUtils.js`
+- Updated to extract data from new response format: `response.data` instead of assuming response is the array
+
+### Key Changes
+- ✅ Cursor is now logged on each request for visibility
+- ✅ Guards prevent infinite loops if cursor doesn't change
+- ✅ Pagination properly advances through all pages
+- ✅ Team filters temporarily removed to ensure clean pagination
+- ✅ Metadata preserved throughout the sync process
+
+### Expected Behavior
+When syncing now:
+```
+📄 Fetching page 1, cursor: null (first page)
+   Received 100 players
+   Next cursor: abc123...
+📄 Fetching page 2, cursor: abc123...
+   Received 100 players
+   Next cursor: def456...
+...
+📄 Fetching page N, cursor: xyz789...
+   Received 50 players
+   Next cursor: null (last page)
+✅ Reached end of pagination (no next_cursor)
+✅ Synced 1250 players in N pages
+```
