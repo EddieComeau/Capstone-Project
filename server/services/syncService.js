@@ -110,21 +110,26 @@ async function syncPlayers(options = {}, { PlayerModel } = {}) {
 
 /**
  * Sync players for a specific team
- * @param {string} teamAbbrev - Team abbreviation (e.g., "KC", "BUF")
+ * NOTE: Currently syncing ALL players (team filter temporarily removed per mentor's advice
+ * to confirm pagination works). This means all players from all teams will be synced.
+ * TODO: Re-enable team filtering once cursor pagination is confirmed working.
+ * 
+ * @param {string} teamAbbrev - Team abbreviation (e.g., "KC", "BUF") - currently unused
  * @returns {Promise<number>} - Number of players synced
  */
 async function syncTeamPlayers(teamAbbrev) {
-  console.log(`Starting sync for team: ${teamAbbrev}`);
+  console.log(`Starting sync for ALL players (team filter temporarily disabled)`);
+  console.log(`Note: Team parameter '${teamAbbrev}' is currently ignored`);
   
-  // Ensure team exists in database (or create it)
+  // Ensure team exists in database (or create it) - keeping this for future use
   const { teamDoc, raw } = await ensureTeam(teamAbbrev);
   
-  console.log(`Fetching players for team ${teamAbbrev} (ID: ${raw.id})...`);
+  console.log(`Fetching all players from Ball Don't Lie API...`);
   
   let upsertCount = 0;
   let cursor = null;
   let pageCount = 0;
-  const maxPages = 100; // Safety limit to prevent infinite loops
+  const maxPages = 50; // Consistent with syncPlayers default
   let previousCursor = null;
 
   // Use cursor-based pagination to fetch all players
@@ -135,9 +140,11 @@ async function syncTeamPlayers(teamAbbrev) {
     console.log(`📄 Fetching page ${pageCount}, cursor: ${cursor || 'null (first page)'}`);
     
     // Use the correct Ball Don't Lie API endpoint: /v1/nfl/players
-    // Temporarily remove team_ids filter to confirm pagination works
+    // TODO: Re-enable team filtering after confirming pagination works
+    // Temporarily removed team_ids filter per mentor's advice to confirm pagination exits cleanly
     const params = {
       per_page: 100,
+      // team_ids: [raw.id],  // TODO: Uncomment once pagination is verified
     };
     
     // Add cursor if we have one (not on first request)
@@ -173,7 +180,7 @@ async function syncTeamPlayers(teamAbbrev) {
         FullName: `${p.first_name || ""} ${p.last_name || ""}`.trim(),
         FirstName: p.first_name || "Unknown",
         LastName: p.last_name || "Unknown",
-        Team: p.team?.abbreviation || teamAbbrev.toUpperCase(),
+        Team: p.team?.abbreviation || "Unknown", // Use actual team from API, not the parameter
         Position: p.position || "Unknown",
         Status: p.status || "Active",
         Jersey: p.jersey_number,
@@ -216,7 +223,8 @@ async function syncTeamPlayers(teamAbbrev) {
     cursor = nextCursor;
   }
 
-  console.log(`✅ Synced ${upsertCount} players for team ${teamAbbrev} in ${pageCount} pages`);
+  console.log(`✅ Synced ${upsertCount} total players in ${pageCount} pages`);
+  console.log(`⚠️ Note: Synced ALL players, not just ${teamAbbrev} (team filter disabled)`);
   
   // Return the shape the controller expects
   return upsertCount;
