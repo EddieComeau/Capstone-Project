@@ -1,21 +1,14 @@
 // server/db.js
-const mongoose = require("mongoose");
 
-async function connectDB() {
-  const uri = process.env.MONGO_URI;
+const mongoose = require('mongoose');
 
-  if (!uri) {
-    console.warn("[MongoDB] MONGO_URI not set in .env");
-    return;
-  }
+async function connectDB(mongoUri = process.env.MONGO_URI) {
+  if (!mongoUri) throw new Error('MONGO_URI is required');
 
-  try {
-    await mongoose.connect(uri);
-    console.log("[MongoDB] Connected");
-  } catch (err) {
-    console.error("[MongoDB] Connection error:", err.message);
-    process.exit(1);
-  }
+  mongoose.set('strictQuery', true);
+
+  await mongoose.connect(mongoUri);
+  return mongoose.connection;
 }
 
 module.exports = connectDB;

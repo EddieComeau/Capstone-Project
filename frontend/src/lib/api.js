@@ -1,18 +1,31 @@
-// src/lib/api.js
-const API_BASE =
-  import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api";
+// frontend/src/lib/api.js
 
-export async function apiGet(path, params = {}) {
-  const url = new URL(`${API_BASE}${path}`);
-  Object.entries(params).forEach(([k, v]) => {
-    if (v === undefined || v === null || v === "") return;
-    url.searchParams.set(k, String(v));
+/**
+ * Small wrapper for making requests to our backend.
+ * Keeps frontend from using Ball Don't Lie API keys directly.
+ */
+
+export async function apiFetch(path, options = {}) {
+  const base = ''; // same-origin
+  const url = `${base}${path.startsWith('/') ? path : `/${path}`}`;
+
+  const res = await fetch(url, {
+    headers: {
+      'Content-Type': 'application/json',
+      ...(options.headers || {}),
+    },
+    credentials: 'include',
+    ...options,
   });
 
-  const res = await fetch(url.toString());
+  const contentType = res.headers.get('content-type') || '';
+  const isJson = contentType.includes('application/json');
+  const body = isJson ? await res.json() : await res.text();
+
   if (!res.ok) {
-    const txt = await res.text();
-    throw new Error(`API ${res.status}: ${txt}`);
+    const msg = typeof body === 'string' ? body : body?.error || 'Request failed';
+    throw new Error(msg);
   }
-  return res.json();
+
+  return body;
 }

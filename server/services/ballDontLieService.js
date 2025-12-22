@@ -1,94 +1,58 @@
 // server/services/ballDontLieService.js
-const axios = require("axios");
+// Thin wrapper around Ball Don't Lie NFL API aligned to the OpenAPI spec.
 
-const BALLDONTLIE_API_KEY = process.env.BALLDONTLIE_API_KEY;
-const BALLDONTLIE_NFL_BASE_URL = process.env.BALLDONTLIE_NFL_BASE_URL;
+const axios = require('axios');
 
-function assertEnv() {
-  if (!BALLDONTLIE_API_KEY) throw new Error("Missing env var: BALLDONTLIE_API_KEY");
-  if (!BALLDONTLIE_NFL_BASE_URL) throw new Error("Missing env var: BALLDONTLIE_NFL_BASE_URL");
-}
+const BASE_URL = process.env.BDL_BASE_URL || 'https://api.balldontlie.io';
+const VERSION_PREFIX = process.env.BDL_VERSION_PREFIX || '/api/v1';
 
-function makeHeadersRaw() {
-  // Some BallDontLie endpoints accept raw key in Authorization header
-  return { Authorization: BALLDONTLIE_API_KEY };
-}
+function getClient() {
+  const apiKey = process.env.BALLDONTLIE_API_KEY || process.env.BDL_API_KEY;
+  if (!apiKey) {
+    // Allow server to start without key in dev, but calls will fail clearly.
+    // This is preferable to silently calling a wrong URL.
+  }
 
-function makeHeadersBearer() {
-  // Some setups want Bearer <key>
-  return {
-    Authorization: BALLDONTLIE_API_KEY.startsWith("Bearer ")
-      ? BALLDONTLIE_API_KEY
-      : `Bearer ${BALLDONTLIE_API_KEY}`,
-  };
+  return axios.create({
+    baseURL: `${BASE_URL}${VERSION_PREFIX}`,
+    headers: {
+      ...(apiKey ? { Authorization: apiKey } : {}),
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    },
+    timeout: Number(process.env.BDL_TIMEOUT_MS || 30000),
+  });
 }
 
 /**
- * Fetch players from Ball Don't Lie NFL API (cursor pagination)
- *
- * Returns:
- *   { data: [...], meta: { next_cursor, per_page, ... } }
+ * OpenAPI: GET /nfl/v1/players
  */
-async function fetchPlayersFromBallDontLie({
-  cursor = null,
-  perPage = 100,
-  activeOnly = false,
-  teamIds = [],
-} = {}) {
-  assertEnv();
+async function listPlayers(params = {}) {
+  const client = getClient();
+  const res = await client.get('/nfl/v1/players', { params });
+  return res.data;
+}
 
-  const path = activeOnly ? "/players/active" : "/players";
-  const url = `${BALLDONTLIE_NFL_BASE_URL}${path}`;
+/**
+ * OpenAPI: GET /nfl/v1/players/{id}
+ */
+async function getPlayer(id) {
+  const client = getClient();
+  const res = await client.get(`/nfl/v1/players/${id}`);
+  return res.data;
+}
 
-  const params = {
-    per_page: Math.min(Number(perPage || 100), 100),
-  };
-
-  if (cursor !== null && cursor !== undefined) params.cursor = cursor;
-
-  // team_ids[] filter (optional)
-  if (Array.isArray(teamIds) && teamIds.length > 0) {
-    params["team_ids[]"] = teamIds
-      .map((t) => Number(t))
-      .filter((n) => !Number.isNaN(n));
-  }
-
-  const doRequest = async (headers) => {
-    const response = await axios.get(url, { params, headers });
-    return {
-      data: response.data?.data ?? [],
-      meta: response.data?.meta ?? {},
-    };
-  };
-
-  try {
-    return await doRequest(makeHeadersRaw());
-  } catch (err) {
-    const status = err?.response?.status;
-
-    // Retry with Bearer if unauthorized/forbidden
-    if (status === 401 || status === 403) {
-      try {
-        return await doRequest(makeHeadersBearer());
-      } catch (err2) {
-        console.error("❌ Ball Don't Lie auth failed (raw + bearer).");
-        if (err2.response) {
-          console.error("Response status:", err2.response.status);
-          console.error("Response data:", err2.response.data);
-        }
-        throw err2;
-      }
-    }
-
-    console.error("❌ Error fetching players from Ball Don't Lie:", err.message);
-    if (err.response) {
-      console.error("Response status:", err.response.status);
-      console.error("Response data:", err.response.data);
-    }
-    throw err;
-  }
+/**
+ * OpenAPI: GET /nfl/v1/teams
+ */
+async function listTeams(params = {}) {
+  const client = getClient();
+  const res = await client.get('/nfl/v1/teams', { params });
+  return res.data;
 }
 
 module.exports = {
-  fetchPlayersFromBallDontLie,
+  listPlayers,
+  getPlayer,
+  listTeams,
 };
