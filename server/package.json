@@ -9,6 +9,7 @@
   "sync": "node scripts/testSync.js",
   "sync:players": "node scripts/testSync.js",
   "sync:all": "node scripts/testSync.js",
+  "sync:teams": "node scripts/syncAllTeams.js",
   "test": "echo \"No tests configured\" && exit 0"
 },
     "dependencies": {
