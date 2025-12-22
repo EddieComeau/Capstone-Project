@@ -4,12 +4,13 @@
     "description": "NFL Cards 4.0 backend (BALLDONTLIE NFL)",
     "main": "server.js",
     "scripts": {
-      "start": "node server.js",
-      "dev": "nodemon server.js",
-      "sync": "node scripts/testSync.js",
-      "sync:players": "node scripts/testSync.js",
-      "test": "echo \"No tests configured\" && exit 0"
-    },
+  "start": "node server.js",
+  "dev": "nodemon server.js",
+  "sync": "node scripts/testSync.js",
+  "sync:players": "node scripts/testSync.js",
+  "sync:all": "node scripts/testSync.js",
+  "test": "echo \"No tests configured\" && exit 0"
+},
     "dependencies": {
       "axios": "^1.7.9",
       "bcryptjs": "^3.0.3",
