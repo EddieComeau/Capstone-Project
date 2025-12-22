@@ -96,55 +96,102 @@ async function syncTeamPlayers(teamAbbrev) {
   
   console.log(`Fetching players for team ${teamAbbrev} (ID: ${raw.id})...`);
   
-  // Use the correct Ball Don't Lie API endpoint: /v1/nfl/players
-  const players = await bdlList("/v1/nfl/players", {
-    team_ids: [raw.id],
-    per_page: 100,
-  });
-
   let upsertCount = 0;
+  let cursor = null;
+  let pageCount = 0;
+  const maxPages = 100; // Safety limit to prevent infinite loops
+  let previousCursor = null;
 
-  for (const p of players) {
-    // Validate critical fields
-    if (!p.id) {
-      console.warn(`⚠️ Skipping player with missing ID:`, p);
-      continue;
+  // Use cursor-based pagination to fetch all players
+  while (pageCount < maxPages) {
+    pageCount++;
+    
+    // Log the cursor on each request for debugging
+    console.log(`📄 Fetching page ${pageCount}, cursor: ${cursor || 'null (first page)'}`);
+    
+    // Use the correct Ball Don't Lie API endpoint: /v1/nfl/players
+    // Temporarily remove team_ids filter to confirm pagination works
+    const params = {
+      per_page: 100,
+    };
+    
+    // Add cursor if we have one (not on first request)
+    if (cursor) {
+      params.cursor = cursor;
     }
     
-    // Map Ball Don't Lie API response to Player model schema
-    const update = {
-      PlayerID: p.id,
-      FullName: `${p.first_name || ""} ${p.last_name || ""}`.trim(),
-      FirstName: p.first_name || "Unknown",
-      LastName: p.last_name || "Unknown",
-      Team: p.team?.abbreviation || teamAbbrev.toUpperCase(),
-      Position: p.position || "Unknown",
-      Status: p.status || "Active",
-      Jersey: p.jersey_number,
-      Height: p.height,
-      Weight: p.weight,
-      BirthDate: p.birth_date,
-      College: p.college,
-      Experience: p.experience,
-      PhotoUrl: p.photo_url,
-      raw: p, // Store raw data for reference
-    };
-
-    const doc = await Player.findOneAndUpdate(
-      { PlayerID: p.id },
-      { $set: update },
-      {
-        new: true,
-        upsert: true,
-      }
-    );
-
-    if (doc) {
-      upsertCount++;
+    const response = await bdlList("/v1/nfl/players", params);
+    
+    // Extract data and metadata
+    const players = response.data || [];
+    const meta = response.meta || {};
+    
+    console.log(`   Received ${players.length} players`);
+    
+    // Guard: Break if cursor didn't change (stuck in loop)
+    if (cursor && cursor === previousCursor) {
+      console.warn(`⚠️ Cursor didn't change, breaking to prevent infinite loop`);
+      break;
     }
+    
+    // Process players for this page
+    for (const p of players) {
+      // Validate critical fields
+      if (!p.id) {
+        console.warn(`⚠️ Skipping player with missing ID:`, p);
+        continue;
+      }
+      
+      // Map Ball Don't Lie API response to Player model schema
+      const update = {
+        PlayerID: p.id,
+        FullName: `${p.first_name || ""} ${p.last_name || ""}`.trim(),
+        FirstName: p.first_name || "Unknown",
+        LastName: p.last_name || "Unknown",
+        Team: p.team?.abbreviation || teamAbbrev.toUpperCase(),
+        Position: p.position || "Unknown",
+        Status: p.status || "Active",
+        Jersey: p.jersey_number,
+        Height: p.height,
+        Weight: p.weight,
+        BirthDate: p.birth_date,
+        College: p.college,
+        Experience: p.experience,
+        PhotoUrl: p.photo_url,
+        raw: p, // Store raw data for reference
+      };
+
+      const doc = await Player.findOneAndUpdate(
+        { PlayerID: p.id },
+        { $set: update },
+        {
+          new: true,
+          upsert: true,
+        }
+      );
+
+      if (doc) {
+        upsertCount++;
+      }
+    }
+    
+    // Get next cursor from metadata
+    const nextCursor = meta.next_cursor || null;
+    
+    console.log(`   Next cursor: ${nextCursor || 'null (last page)'}`);
+    
+    // Guard: Break if no more pages (cursor is null or no players returned)
+    if (!nextCursor || players.length === 0) {
+      console.log(`✅ Reached end of pagination (${nextCursor ? 'no players' : 'no next_cursor'})`);
+      break;
+    }
+    
+    // Store previous cursor and update to next
+    previousCursor = cursor;
+    cursor = nextCursor;
   }
 
-  console.log(`✅ Synced ${upsertCount} players for team ${teamAbbrev}`);
+  console.log(`✅ Synced ${upsertCount} players for team ${teamAbbrev} in ${pageCount} pages`);
   
   // Return the shape the controller expects
   return upsertCount;
