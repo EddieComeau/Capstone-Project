@@ -1,14 +1,13 @@
-<<<<<<< HEAD
 // server/utils/teamUtils.js
 
 const ballDontLieService = require('../services/ballDontLieService');
+const Team = require('../models/Team');
+const { bdlList } = require('./apiUtils');
 
 async function fetchTeams(params = {}) {
   const payload = await ballDontLieService.listTeams(params);
   return payload && payload.data ? payload.data : payload;
-=======
-const Team = require("../models/Team");
-const { bdlList } = require("./apiUtils");
+}
 
 /**
  * Ensure a team exists in the database, fetching from Ball Don't Lie API if needed
@@ -71,9 +70,9 @@ async function ensureTeam(teamAbbrev) {
     console.error(`Error ensuring team ${teamAbbrev}:`, error.message);
     throw error;
   }
->>>>>>> origin/copilot/sync-data-to-mongodb
 }
 
 module.exports = {
   fetchTeams,
+  ensureTeam,
 };
