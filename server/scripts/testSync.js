@@ -60,11 +60,12 @@ async function testSync(teamAbbrev = "KC") {
   console.log("📋 Step 3: Testing Ball Don't Lie API access...");
   try {
     const { bdlList } = require("../utils/apiUtils");
-    const teams = await bdlList("/teams", { per_page: 1 });
+    // <-- call the NFL teams endpoint under /nfl/v1
+    const teams = await bdlList("/nfl/v1/teams", { per_page: 1 });
     console.log("✅ Ball Don't Lie API is accessible\n");
   } catch (error) {
     console.error("❌ Ball Don't Lie API access failed:", error.message);
-    console.error("Please check your BALLDONTLIE_API_KEY.");
+    console.error("Please check your BALLDONTLIE_API_KEY and base URL.");
     await mongoose.connection.close();
     process.exit(1);
   }
@@ -90,12 +91,12 @@ async function testSync(teamAbbrev = "KC") {
   console.log("   3. Use the /api/players/sync endpoint to sync via API");
 }
 
-// Get team abbreviation from command line or use default
-const teamAbbrev = process.argv[2] || "KC";
+ // Get team abbreviation from command line or use default
+ const teamAbbrev = process.argv[2] || "KC";
 
-// Run the test
-testSync(teamAbbrev)
-  .catch(error => {
-    console.error("❌ Unexpected error:", error);
-    process.exit(1);
-  });
+ // Run the test
+ testSync(teamAbbrev)
+   .catch(error => {
+     console.error("❌ Unexpected error:", error);
+     process.exit(1);
+   });

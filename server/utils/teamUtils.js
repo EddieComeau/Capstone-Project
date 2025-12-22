@@ -35,8 +35,8 @@ async function ensureTeam(teamAbbrev) {
     
     // If not in database, fetch from Ball Don't Lie API
     console.log(`Fetching team ${teamAbbrev} from Ball Don't Lie API...`);
-    // Use the correct Ball Don't Lie API endpoint: /v1/nfl/teams
-    const response = await bdlList("/v1/nfl/teams", { per_page: 100 });
+    // Use the correct Ball Don't Lie API endpoint: /nfl/v1/teams
+    const response = await bdlList("/nfl/v1/teams", { per_page: 100 });
     
     // Extract teams array from response
     const teams = response.data || [];

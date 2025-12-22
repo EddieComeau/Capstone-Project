@@ -175,30 +175,26 @@ async function syncTeamPlayers(teamAbbrev) {
       }
       
       // Map Ball Don't Lie API response to Player model schema
+      // Use fields that exist in server/models/Player.js: bdlId, first_name, last_name, full_name, position, team, raw
       const update = {
-        PlayerID: p.id,
-        FullName: `${p.first_name || ""} ${p.last_name || ""}`.trim(),
-        FirstName: p.first_name || "Unknown",
-        LastName: p.last_name || "Unknown",
-        Team: p.team?.abbreviation || "Unknown", // Use actual team from API, not the parameter
-        Position: p.position || "Unknown",
-        Status: p.status || "Active",
-        Jersey: p.jersey_number,
-        Height: p.height,
-        Weight: p.weight,
-        BirthDate: p.birth_date,
-        College: p.college,
-        Experience: p.experience,
-        PhotoUrl: p.photo_url,
-        raw: p, // Store raw data for reference
+        bdlId: p.id,
+        first_name: p.first_name || "Unknown",
+        last_name: p.last_name || "Unknown",
+        full_name: p.full_name || `${p.first_name || ""} ${p.last_name || ""}`.trim(),
+        position: p.position || "",
+        team: p.team || null,
+        raw: p,
+        updatedAt: new Date(),
       };
 
+      // Update by bdlId to match schema and avoid strict-mode errors
       const doc = await Player.findOneAndUpdate(
-        { PlayerID: p.id },
+        { bdlId: p.id },
         { $set: update },
         {
           new: true,
           upsert: true,
+          setDefaultsOnInsert: true,
         }
       );
 

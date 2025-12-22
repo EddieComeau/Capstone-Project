@@ -25,7 +25,7 @@ You can find the sync logic and cursor guards in `server/services/syncService.js
 BDL OpenAPI spec:  
 `https://www.balldontlie.io/openapi.yml`
 
-This repository expects to call the BDL NFL endpoints under `/v1/nfl/...`. The codebase centralizes BDL calls via `server/utils/apiUtils.js` (the `bdlList` helper). That helper is the canonical place for base URL and API-key handling.
+This repository expects to call the BDL NFL endpoints under `/nfl/v1/...`. The codebase centralizes BDL calls via `server/utils/apiUtils.js` (the `bdlList` helper). That helper is the canonical place for base URL and API-key handling.
 
 ---
 
