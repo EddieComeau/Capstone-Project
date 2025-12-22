@@ -1,7 +1,8 @@
 // server/utils/apiUtils.js
 // Shared API utilities
 
-<<<<<<< HEAD
+const axios = require('axios');
+
 /**
  * Build a backend-relative URL path safely.
  * NOTE: Frontend should use frontend/src/lib/api.js; server uses absolute URLs.
@@ -9,8 +10,11 @@
 function joinUrl(base, path) {
   if (!base) return path;
   return `${base.replace(/\/+$/, '')}/${String(path || '').replace(/^\/+/, '')}`;
-=======
-// Function to make an API request to Ball Don't Lie NFL API
+}
+
+/**
+ * Function to make an API request to Ball Don't Lie NFL API
+ */
 async function bdlList(endpoint, params = {}) {
   // Base URL for Ball Don't Lie API (without version/sport paths)
   const baseUrl = process.env.BALLDONTLIE_NFL_BASE_URL || "https://api.balldontlie.io";
@@ -38,9 +42,9 @@ async function bdlList(endpoint, params = {}) {
     }
     throw error;
   }
->>>>>>> origin/copilot/sync-data-to-mongodb
 }
 
 module.exports = {
   joinUrl,
+  bdlList,
 };
