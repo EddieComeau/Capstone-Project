@@ -60,7 +60,6 @@ async function testSync(teamAbbrev = "KC") {
   console.log("📋 Step 3: Testing Ball Don't Lie API access...");
   try {
     const { bdlList } = require("../utils/apiUtils");
-    // <-- call the NFL teams endpoint under /nfl/v1
     const teams = await bdlList("/nfl/v1/teams", { per_page: 1 });
     console.log("✅ Ball Don't Lie API is accessible\n");
   } catch (error) {
@@ -73,8 +72,21 @@ async function testSync(teamAbbrev = "KC") {
   // Step 4: Test player sync for a team
   console.log(`📋 Step 4: Testing player sync for team: ${teamAbbrev}...`);
   try {
-    const count = await syncTeamPlayers(teamAbbrev);
-    console.log(`✅ Successfully synced ${count} players for team ${teamAbbrev}\n`);
+    const result = await syncTeamPlayers(teamAbbrev);
+
+    // result may be an object { upsertCount, next_cursor } (new behavior)
+    // or an integer (old behavior). Handle both.
+    if (typeof result === 'object' && result !== null) {
+      const upserted = result.upsertCount ?? result.syncedPlayers ?? null;
+      const nextCursor = result.next_cursor ?? result.nextCursor ?? null;
+      console.log(`✅ Successfully synced ${upserted !== null ? upserted : 'N/A'} players for team ${teamAbbrev}`);
+      if (nextCursor) {
+        console.log(`   Next cursor after sync: ${nextCursor}`);
+      }
+    } else {
+      // legacy numeric return
+      console.log(`✅ Successfully synced ${result} players for team ${teamAbbrev}`);
+    }
   } catch (error) {
     console.error("❌ Player sync failed:", error.message);
     console.error(error);
