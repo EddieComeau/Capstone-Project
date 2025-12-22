@@ -1,9 +1,11 @@
+// server/models/Player.js
 const mongoose = require("mongoose");
 
 /**
  * Player model
  *
  * Fields:
+ *  - PlayerID: Number (legacy / compatibility)
  *  - bdlId: Number (BDL player id)
  *  - first_name, last_name, full_name: Strings
  *  - position: String
@@ -14,6 +16,14 @@ const mongoose = require("mongoose");
 
 const PlayerSchema = new mongoose.Schema(
   {
+    // Legacy / compatibility id (some older code used PlayerID)
+    PlayerID: {
+      type: Number,
+      // index true helps queries; DB may already have an index on this field.
+      index: true,
+      // do not declare unique here to avoid index recreation conflicts with existing DB index
+    },
+
     bdlId: {
       type: Number,
       required: true,
@@ -42,7 +52,7 @@ const PlayerSchema = new mongoose.Schema(
 
     position: {
       type: String,
-      enum: ["QB", "RB", "WR", "TE", "K", "P", "DL", "LB", "DB", ""], // Add valid positions
+      enum: ["QB", "RB", "WR", "TE", "K", "P", "DL", "LB", "DB", ""],
       default: "",
       trim: true,
     },
