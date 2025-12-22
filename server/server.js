@@ -37,7 +37,7 @@ const PORT = Number(process.env.PORT || 5000);
     const shouldSyncOnStartup = process.env.SYNC_ON_STARTUP === 'true';
     
     if (shouldSyncOnStartup) {
-      console.log('🔄 SYNC_ON_STARTUP is enabled, syncing players from Ball Don\'t Lie...');
+      console.log(`🔄 SYNC_ON_STARTUP is enabled, syncing players from Ball Don't Lie...`);
       try {
         const result = await syncPlayers();
         console.log(`✅ Startup sync completed: ${result.synced} players synced in ${result.pages} pages`);
