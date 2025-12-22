@@ -66,8 +66,4 @@ const PlayerSchema = new mongoose.Schema(
   }
 );
 
-// Prevent duplicate index warnings in some environments
-PlayerSchema.index({ bdlId: 1 }, { unique: true });
-PlayerSchema.index({ full_name: 1 });
-
 module.exports = mongoose.model("Player", PlayerSchema);
