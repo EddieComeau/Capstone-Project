@@ -1,54 +1,30 @@
 // server/services/ballDontLieService.js
-// Thin wrapper around Ball Don't Lie NFL API aligned to the OpenAPI spec.
+// Thin wrapper around Ball Don't Lie NFL API.
+// Delegates to the centralized bdlList helper so URL/version handling and headers are consistent.
 
-const axios = require('axios');
-
-const BASE_URL = process.env.BDL_BASE_URL || 'https://api.balldontlie.io';
-const VERSION_PREFIX = process.env.BDL_VERSION_PREFIX || '/api/v1';
-
-function getClient() {
-  const apiKey = process.env.BALLDONTLIE_API_KEY || process.env.BDL_API_KEY;
-  if (!apiKey) {
-    // Allow server to start without key in dev, but calls will fail clearly.
-    // This is preferable to silently calling a wrong URL.
-  }
-
-  return axios.create({
-    baseURL: `${BASE_URL}${VERSION_PREFIX}`,
-    headers: {
-      ...(apiKey ? { Authorization: apiKey } : {}),
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-    },
-    timeout: Number(process.env.BDL_TIMEOUT_MS || 30000),
-  });
-}
+const { bdlList } = require('../utils/apiUtils');
 
 /**
- * OpenAPI: GET /nfl/v1/players
+ * List players (delegates to the central helper)
+ * Returns whatever bdlList returns (commonly an object with `.data` and `.meta`)
  */
 async function listPlayers(params = {}) {
-  const client = getClient();
-  const res = await client.get('/nfl/v1/players', { params });
-  return res.data;
+  return bdlList('/nfl/players', params);
 }
 
 /**
- * OpenAPI: GET /nfl/v1/players/{id}
+ * Get a single player by id
  */
 async function getPlayer(id) {
-  const client = getClient();
-  const res = await client.get(`/nfl/v1/players/${id}`);
-  return res.data;
+  if (!id) throw new Error('Missing player id');
+  return bdlList(`/nfl/players/${id}`, {});
 }
 
 /**
- * OpenAPI: GET /nfl/v1/teams
+ * List teams
  */
 async function listTeams(params = {}) {
-  const client = getClient();
-  const res = await client.get('/nfl/v1/teams', { params });
-  return res.data;
+  return bdlList('/nfl/teams', params);
 }
 
 module.exports = {

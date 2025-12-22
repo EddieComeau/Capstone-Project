@@ -152,7 +152,8 @@ async function syncTeamPlayers(teamAbbrev) {
      params.cursor = cursor;
    }
    
-   const response = await bdlList("/v1/nfl/players", params);
+   const response = await bdlList("/nfl/players", params);
+
    
    // Extract data and metadata
    const players = response.data || [];
