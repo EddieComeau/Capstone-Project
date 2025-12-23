@@ -1,46 +1,8 @@
-:root {
-  --bg: #05070d;
-  --stroke: rgba(255, 255, 255, 0.14);
-  --text: rgba(255, 255, 255, 0.94);
-  --muted: rgba(255, 255, 255, 0.7);
-  font-family: ui-monospace, SFMono-Regular, "DM Mono", "Fira Code", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-  background-color: var(--bg);
-  color: var(--text);
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-*, *::before, *::after {
-  box-sizing: border-box;
-}
-
-
-body {
-  margin: 0;
-  min-height: 100vh;
-  background:
-    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.04) 0px, rgba(255, 255, 255, 0.04) 2px, transparent 2px, transparent 6px),
-    radial-gradient(1200px 700px at 18% 8%, rgba(255, 239, 107, 0.12), transparent 60%),
-    radial-gradient(900px 520px at 82% 12%, rgba(82, 246, 255, 0.12), transparent 55%),
-    var(--bg);
-  color: var(--text);
-}
-
-
-a {
-  color: inherit;
-}
-
-a:hover {
-  color: #ffef6b;
-}
-
-button {
-  font-family: inherit;
-  
-}
-
-#root {
-  width: 100%;
-}
+body { font-family: Arial, sans-serif; margin: 0; background:#f5f7fb; color:#222; }
+.header { background:#0b3d91; color:#fff; padding:16px; }
+.container { max-width:1100px; margin:20px auto; padding:16px; }
+nav a { margin-right:12px; color:#fff; text-decoration:none; }
+.card { background:#fff; padding:12px; border-radius:6px; box-shadow:0 1px 3px rgba(0,0,0,0.06); margin-bottom:12px; }
+table { width:100%; border-collapse:collapse; }
+th, td { text-align:left; padding:8px; border-bottom:1px solid #eee; }
+button { padding:6px 10px; background:#0b3d91; color:#fff; border:none; border-radius:4px; cursor:pointer; }
