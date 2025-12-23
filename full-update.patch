@@ -1,0 +1,955 @@
+*** Begin Patch
+*** Add File: server/models/SyncState.js
++// server/models/SyncState.js
++const mongoose = require('mongoose');
++
++const SyncStateSchema = new mongoose.Schema(
++  {
++    key: { type: String, required: true, unique: true, index: true },
++    cursor: { type: String, default: null },
++    updatedAt: { type: Date, default: Date.now },
++    meta: { type: mongoose.Schema.Types.Mixed, default: null }
++  },
++  { timestamps: true }
++);
++
++module.exports = mongoose.model('SyncState', SyncStateSchema);
++
+*** End Patch
+*** Begin Patch
+*** Add File: server/models/EPAModel.js
++// server/models/EPAModel.js
++const mongoose = require('mongoose');
++
++const EPAModelSchema = new mongoose.Schema({
++  key: { type: String, required: true, unique: true, index: true },
++  season: { type: Number, default: null },
++  bins: { type: mongoose.Schema.Types.Mixed, default: {} },
++  lookup: { type: mongoose.Schema.Types.Mixed, default: {} },
++  meta: { type: mongoose.Schema.Types.Mixed, default: null },
++  updatedAt: { type: Date, default: Date.now }
++});
++
++module.exports = mongoose.model('EPAModel', EPAModelSchema);
++
+*** End Patch
+*** Begin Patch
+*** Add File: server/models/WebhookSubscription.js
++// server/models/WebhookSubscription.js
++const mongoose = require('mongoose');
++
++const WebhookSubscriptionSchema = new mongoose.Schema(
++  {
++    url: { type: String, required: true },
++    events: { type: [String], default: [] }, // e.g., ['injury.update', 'metric.threshold']
++    active: { type: Boolean, default: true },
++    secret: { type: String, default: null },
++    lastStatus: { type: mongoose.Schema.Types.Mixed, default: null },
++  },
++  { timestamps: true }
++);
++
++module.exports = mongoose.model('WebhookSubscription', WebhookSubscriptionSchema);
++
+*** End Patch
+*** Begin Patch
+*** Add File: server/models/Alert.js
++// server/models/Alert.js
++const mongoose = require('mongoose');
++
++const AlertSchema = new mongoose.Schema(
++  {
++    name: { type: String, required: true },
++    entityType: { type: String, required: true, enum: ['player','team'] },
++    entityId: { type: Number, required: true },
++    season: { type: Number, default: null },
++    scope: { type: String, default: 'season' },
++    metric: { type: String, required: true }, // e.g., 'passer_rating'
++    operator: { type: String, required: true, enum: ['gt','gte','lt','lte','eq'] },
++    value: { type: Number, required: true },
++    webhook: { type: mongoose.Schema.Types.ObjectId, ref: 'WebhookSubscription', required: true },
++    active: { type: Boolean, default: true },
++    lastFiredAt: { type: Date, default: null }
++  },
++  { timestamps: true }
++);
++
++module.exports = mongoose.model('Alert', AlertSchema);
++
+*** End Patch
+*** Begin Patch
+*** Add File: server/services/epaTrainer.js
++// server/services/epaTrainer.js
++const Play = require('../models/Play');
++const EPAModel = require('../models/EPAModel');
++
++function defaultBins() {
++  const yardBins = [];
++  for (let i = 0; i <= 100; i += 5) yardBins.push(i);
++  const distanceBins = [0, 5, 10, 20, 100];
++  const downBins = [1,2,3,4];
++  return { yardBins, distanceBins, downBins };
++}
++
++function findBinIndex(bins, value) {
++  for (let i = 0; i < bins.length - 1; i++) {
++    if (value >= bins[i] && value < bins[i+1]) return i;
++  }
++  return Math.max(0, bins.length - 2);
++}
++
++function keyFor(yardIdx, down, distIdx) {
++  return `${yardIdx}|${down}|${distIdx}`;
++}
++
++async function computeObservedPointsForPlay(plays, index, offenseTeamId) {
++  let points = 0;
++  for (let j = index; j < Math.min(plays.length, index + 25); j++) {
++    const r = plays[j].raw || {};
++    const pts = r.points_scored || r.points || r.score_change || 0;
++    const scoringTeam = r.scoring_team_id || (r.team && r.team.id) || null;
++    if (pts && scoringTeam && scoringTeam === offenseTeamId) {
++      points += Number(pts);
++    } else if (pts && scoringTeam == null) {
++      points += Number(pts);
++    }
++    if (r.possession_change || r.change_of_possession) break;
++  }
++  return points;
++}
++
++async function trainEPAModel(options = {}) {
++  const season = options.season || (new Date()).getFullYear();
++  const lookbackGames = Number(options.lookbackGames || 1000);
++  const perGameLimit = Number(options.perGameLimit || 1000);
++
++  const bins = options.bins || defaultBins();
++  const yardBins = bins.yardBins;
++  const distanceBins = bins.distanceBins;
++  const downBins = bins.downBins;
++
++  const gameIds = await Play.distinct('gameId', { 'raw.game.season': season });
++  const selectedGames = gameIds.slice(0, lookbackGames);
++
++  const counts = {};
++  let totalPlays = 0;
++
++  for (const gameId of selectedGames) {
++    const plays = await Play.find({ gameId }).sort({ sequence: 1, _id:1 }).limit(perGameLimit).lean();
++    for (let i = 0; i < plays.length; i++) {
++      const p = plays[i];
++      const raw = p.raw || {};
++      const yBefore = raw.yardline_number || raw.yardline || raw.yard_line;
++      const down = raw.down || raw.play_down || null;
++      const distance = raw.distance || raw.yards_to_go || null;
++      const offenseTeamId = raw.offense_team_id || (raw.offense_team && raw.offense_team.id) || null;
++      if (yBefore == null || down == null || distance == null || offenseTeamId == null) continue;
++      const observedPoints = await computeObservedPointsForPlay(plays, i, offenseTeamId);
++      const yardIdx = findBinIndex(yardBins, Number(yBefore));
++      let distIdx = 0;
++      for (let d = 0; d < distanceBins.length - 1; d++) {
++        if (Number(distance) >= distanceBins[d] && Number(distance) < distanceBins[d+1]) { distIdx = d; break; }
++      }
++      const key = keyFor(yardIdx, down, distIdx);
++      counts[key] = counts[key] || { sumEP: 0, count: 0 };
++      counts[key].sumEP += observedPoints;
++      counts[key].count += 1;
++      totalPlays++;
++    }
++  }
++
++  const lookup = {};
++  for (const [k, v] of Object.entries(counts)) {
++    lookup[k] = { avgEP: v.count > 0 ? Number((v.sumEP / v.count).toFixed(3)) : 0, count: v.count };
++  }
++
++  const keyName = `epamodel_season_${season}_v1`;
++  await EPAModel.updateOne(
++    { key: keyName },
++    { $set: { key: keyName, season, bins: { yardBins, distanceBins, downBins }, lookup, meta: { totalPlays, generatedAt: new Date() }, updatedAt: new Date() } },
++    { upsert: true }
++  );
++
++  return { key: keyName, totalPlays, lookupCount: Object.keys(lookup).length };
++}
++
++module.exports = {
++  trainEPAModel
++};
++
+*** End Patch
+*** Begin Patch
+*** Add File: server/services/notificationService.js
++// server/services/notificationService.js
++const axios = require('axios');
++const WebhookSubscription = require('../models/WebhookSubscription');
++const Alert = require('../models/Alert');
++const Injury = require('../models/Injury');
++const AdvancedMetric = require('../models/AdvancedMetric');
++const SyncState = require('../models/SyncState');
++
++const DEFAULT_POLL_INTERVAL_MS = Number(process.env.NOTIFY_POLL_INTERVAL_MS || 15000);
++const REQUEST_TIMEOUT_MS = 7000;
++
++async function postJson(url, payload, timeout = REQUEST_TIMEOUT_MS) {
++  try {
++    const res = await axios.post(url, payload, { timeout });
++    return { ok: true, status: res.status, data: res.data };
++  } catch (err) {
++    return { ok: false, error: err.message || String(err) };
++  }
++}
++
++async function notifyWebhooks(event, payload) {
++  const subs = await WebhookSubscription.find({ active: true, events: event }).lean();
++  for (const sub of subs) {
++    (async () => {
++      const result = await postJson(sub.url, { event, payload });
++      try {
++        await WebhookSubscription.updateOne({ _id: sub._id }, { $set: { lastStatus: { ts: new Date(), result } } });
++      } catch (err) { /* noop */ }
++    })();
++  }
++}
++
++function evaluateOperator(op, a, b) {
++  if (a === undefined || a === null) return false;
++  switch (op) {
++    case 'gt': return a > b;
++    case 'gte': return a >= b;
++    case 'lt': return a < b;
++    case 'lte': return a <= b;
++    case 'eq': return a === b;
++    default: return false;
++  }
++}
++
++async function evaluateAlertsForMetricChange(doc) {
++  const entityType = doc.entityType;
++  const entityId = doc.entityId;
++  const season = doc.season;
++  const scope = doc.scope || 'season';
++  const metrics = doc.metrics || {};
++
++  const alerts = await Alert.find({ active: true, entityType, entityId, season, scope }).populate('webhook').lean();
++  for (const alert of alerts) {
++    const metricValue = metrics[alert.metric];
++    const meets = evaluateOperator(alert.operator, metricValue, alert.value);
++    if (meets) {
++      const payload = { alert, metricValue, doc };
++      try {
++        const res = await postJson(alert.webhook.url, { event: 'metric.threshold', payload });
++        await Alert.updateOne({ _id: alert._id }, { $set: { lastFiredAt: new Date() } });
++        await WebhookSubscription.updateOne({ _id: alert.webhook._id }, { $set: { lastStatus: { ts: new Date(), result: res } } });
++      } catch (err) { /* ignore */ }
++    }
++  }
++}
++
++async function handleInjuryChange(change) {
++  try {
++    const full = change.fullDocument || change;
++    const event = 'injury.update';
++    const payload = { operation: change.operationType || 'unknown', injury: full };
++    await notifyWebhooks(event, payload);
++  } catch (err) {
++    console.error('handleInjuryChange error', err && err.message ? err.message : err);
++  }
++}
++
++async function handleMetricChange(change) {
++  try {
++    const full = change.fullDocument || change;
++    await evaluateAlertsForMetricChange(full);
++    await notifyWebhooks('metric.update', { operation: change.operationType || 'unknown', metricDoc: full });
++  } catch (err) {
++    console.error('handleMetricChange error', err && err.message ? err.message : err);
++  }
++}
++
++async function getLastTimestampKey(key) {
++  const doc = await SyncState.findOne({ key }).lean();
++  return doc && doc.meta && doc.meta.lastTs ? new Date(doc.meta.lastTs) : null;
++}
++async function setLastTimestampKey(key, dt) {
++  await SyncState.updateOne({ key }, { $set: { key, cursor: null, meta: { lastTs: dt }, updatedAt: new Date() } }, { upsert: true });
++}
++
++async function pollInjuriesLoop(intervalMs = DEFAULT_POLL_INTERVAL_MS) {
++  const key = 'notify:injuries:ts';
++  let lastTs = await getLastTimestampKey(key) || new Date(0);
++  setInterval(async () => {
++    try {
++      const docs = await Injury.find({ updatedAt: { $gt: lastTs } }).lean();
++      for (const d of docs) {
++        await handleInjuryChange({ fullDocument: d, operationType: 'update' });
++        if (d.updatedAt && d.updatedAt > lastTs) lastTs = d.updatedAt;
++      }
++      await setLastTimestampKey(key, lastTs);
++    } catch (err) {
++      console.warn('pollInjuriesLoop error', err && err.message ? err.message : err);
++    }
++  }, intervalMs);
++}
++
++async function pollMetricsLoop(intervalMs = DEFAULT_POLL_INTERVAL_MS) {
++  const key = 'notify:metrics:ts';
++  let lastTs = await getLastTimestampKey(key) || new Date(0);
++  setInterval(async () => {
++    try {
++      const docs = await AdvancedMetric.find({ updatedAt: { $gt: lastTs } }).lean();
++      for (const d of docs) {
++        await handleMetricChange({ fullDocument: d, operationType: 'update' });
++        if (d.updatedAt && d.updatedAt > lastTs) lastTs = d.updatedAt;
++      }
++      await setLastTimestampKey(key, lastTs);
++    } catch (err) {
++      console.warn('pollMetricsLoop error', err && err.message ? err.message : err);
++    }
++  }, intervalMs);
++}
++
++let streams = [];
++let polling = false;
++
++async function start() {
++  try {
++    if (typeof Injury.watch === 'function' && typeof AdvancedMetric.watch === 'function') {
++      const injuryStream = Injury.watch([], { fullDocument: 'updateLookup' });
++      injuryStream.on('change', handleInjuryChange);
++      streams.push(injuryStream);
++
++      const metricStream = AdvancedMetric.watch([], { fullDocument: 'updateLookup' });
++      metricStream.on('change', handleMetricChange);
++      streams.push(metricStream);
++
++      console.log('🔔 notificationService: change streams established');
++      return;
++    }
++  } catch (err) {
++    console.warn('Change streams unavailable:', err && err.message ? err.message : err);
++  }
++
++  if (!polling) {
++    console.warn('🔔 notificationService: falling back to polling');
++    polling = true;
++    pollInjuriesLoop();
++    pollMetricsLoop();
++  }
++}
++
++async function stop() {
++  for (const s of streams) {
++    try { await s.close(); } catch (e) { /* noop */ }
++  }
++  streams = [];
++  polling = false;
++}
++
++module.exports = {
++  start,
++  stop,
++  notifyWebhooks,
++  evaluateAlertsForMetricChange,
++};
++
+*** End Patch
+*** Begin Patch
+*** Add File: server/controllers/exportController.js
++// server/controllers/exportController.js
++const AdvancedMetric = require('../models/AdvancedMetric');
++const { Parser } = require('json2csv');
++
++async function exportTeamMetrics(req, res) {
++  try {
++    const season = Number(req.params.season);
++    if (!season) return res.status(400).json({ ok: false, error: 'season required' });
++    const format = (req.query.format || 'json').toLowerCase();
++    const docs = await AdvancedMetric.find({ entityType: 'team', season, scope: req.query.scope || 'season' }).lean();
++
++    const rows = docs.map(d => ({
++      teamId: d.entityId,
++      season: d.season,
++      scope: d.scope,
++      metrics: d.metrics || {},
++      bdl: d.sources && d.sources.bdl ? d.sources.bdl : null,
++      computed: d.sources && d.sources.computed ? d.sources.computed : null,
++      updatedAt: d.updatedAt,
++    }));
++
++    if (format === 'csv') {
++      const metricKeys = new Set();
++      for (const r of rows) if (r.metrics && typeof r.metrics === 'object') Object.keys(r.metrics).forEach(k => metricKeys.add(k));
++      const fields = ['teamId', 'season', 'scope', ...Array.from(metricKeys).sort(), 'updatedAt'];
++      const csvRows = rows.map(r => {
++        const base = { teamId: r.teamId, season: r.season, scope: r.scope, updatedAt: r.updatedAt };
++        for (const k of metricKeys) base[k] = (r.metrics && r.metrics[k] !== undefined) ? r.metrics[k] : '';
++        return base;
++      });
++      const parser = new Parser({ fields });
++      const csv = parser.parse(csvRows);
++      res.header('Content-Type', 'text/csv');
++      res.attachment(`team_metrics_${season}.csv`);
++      return res.send(csv);
++    } else {
++      return res.json({ ok: true, season, count: rows.length, rows });
++    }
++  } catch (err) {
++    console.error('exportTeamMetrics error', err && err.message ? err.message : err);
++    return res.status(500).json({ ok: false, error: err.message || 'internal error' });
++  }
++}
++
++module.exports = { exportTeamMetrics };
++
+*** End Patch
+*** Begin Patch
+*** Add File: server/routes/exportRoutes.js
++// server/routes/exportRoutes.js
++const express = require('express');
++const router = express.Router();
++const { exportTeamMetrics } = require('../controllers/exportController');
++
++router.get('/team-metrics/:season', exportTeamMetrics);
++
++module.exports = router;
++
+*** End Patch
+*** Begin Patch
+*** Add File: server/controllers/syncStateController.js
++// server/controllers/syncStateController.js
++const SyncState = require('../models/SyncState');
++
++async function listSyncState(req, res) {
++  try {
++    const docs = await SyncState.find({}).lean();
++    return res.json({ ok: true, states: docs });
++  } catch (err) {
++    console.error('listSyncState error', err && err.message ? err.message : err);
++    return res.status(500).json({ ok: false, error: err.message || 'internal' });
++  }
++}
++
++async function resetSyncState(req, res) {
++  try {
++    const { key, cursor, meta } = req.body;
++    if (!key) return res.status(400).json({ ok: false, error: 'key required' });
++    await SyncState.updateOne({ key }, { $set: { key, cursor: cursor || null, meta: meta || null, updatedAt: new Date() } }, { upsert: true });
++    return res.json({ ok: true });
++  } catch (err) {
++    console.error('resetSyncState error', err && err.message ? err.message : err);
++    return res.status(500).json({ ok: false, error: err.message || 'internal' });
++  }
++}
++
++module.exports = { listSyncState, resetSyncState };
++
+*** End Patch
+*** Begin Patch
+*** Add File: server/routes/syncStateRoutes.js
++// server/routes/syncStateRoutes.js
++const express = require('express');
++const router = express.Router();
++const ctrl = require('../controllers/syncStateController');
++
++router.get('/', ctrl.listSyncState);
++router.post('/reset', ctrl.resetSyncState);
++
++module.exports = router;
++
+*** End Patch
+*** Begin Patch
+*** Add File: server/controllers/notificationController.js
++// server/controllers/notificationController.js
++const WebhookSubscription = require('../models/WebhookSubscription');
++const Alert = require('../models/Alert');
++
++async function createWebhook(req, res) {
++  try {
++    const { url, events, secret } = req.body;
++    if (!url || !Array.isArray(events) || events.length === 0) return res.status(400).json({ ok:false, error: 'url and events[] required' });
++    const sub = await WebhookSubscription.create({ url, events, secret: secret || null });
++    return res.json({ ok:true, webhook: sub });
++  } catch (err) {
++    console.error('createWebhook error', err && err.message ? err.message : err);
++    return res.status(500).json({ ok:false, error: err.message || 'internal' });
++  }
++}
++
++async function listWebhooks(req, res) {
++  try {
++    const subs = await WebhookSubscription.find({}).lean();
++    return res.json({ ok:true, webhooks: subs });
++  } catch (err) { return res.status(500).json({ ok:false, error: err.message || 'internal' }); }
++}
++
++async function deleteWebhook(req, res) {
++  try { const id = req.params.id; await WebhookSubscription.deleteOne({ _id: id }); return res.json({ ok:true }); } catch (err) { return res.status(500).json({ ok:false, error: err.message || 'internal' }); }
++
++async function createAlert(req, res) {
++  try {
++    const { name, entityType, entityId, season, scope, metric, operator, value, webhookId } = req.body;
++    if (!name || !entityType || !entityId || !metric || !operator || value === undefined || !webhookId) {
++      return res.status(400).json({ ok:false, error: 'missing required fields' });
++    }
++    const a = await Alert.create({ name, entityType, entityId, season: season || null, scope: scope || 'season', metric, operator, value: Number(value), webhook: webhookId, active: true });
++    return res.json({ ok:true, alert: a });
++  } catch (err) { console.error('createAlert error', err && err.message ? err.message : err); return res.status(500).json({ ok:false, error: err.message || 'internal' }); }
++}
++
++async function listAlerts(req, res) {
++  try {
++    const alerts = await Alert.find({}).populate('webhook').lean();
++    return res.json({ ok:true, alerts });
++  } catch (err) { return res.status(500).json({ ok:false, error: err.message || 'internal' }); }
++}
++
++async function deleteAlert(req, res) {
++  try { const id = req.params.id; await Alert.deleteOne({ _id: id }); return res.json({ ok:true }); } catch (err) { return res.status(500).json({ ok:false, error: err.message || 'internal' }); }
++
++module.exports = { createWebhook, listWebhooks, deleteWebhook, createAlert, listAlerts, deleteAlert };
++
+*** End Patch
+*** Begin Patch
+*** Add File: server/routes/notificationRoutes.js
++// server/routes/notificationRoutes.js
++const express = require('express');
++const router = express.Router();
++const ctrl = require('../controllers/notificationController');
++
++// Webhooks
++router.post('/webhooks', ctrl.createWebhook);
++router.get('/webhooks', ctrl.listWebhooks);
++router.delete('/webhooks/:id', ctrl.deleteWebhook);
++
++// Alerts
++router.post('/alerts', ctrl.createAlert);
++router.get('/alerts', ctrl.listAlerts);
++router.delete('/alerts/:id', ctrl.deleteAlert);
++
++module.exports = router;
++
+*** End Patch
+*** Begin Patch
+*** Add File: server/server.js
++// server/server.js
++require('dotenv').config();
++
++const path = require('path');
++const express = require('express');
++const morgan = require('morgan');
++const cors = require('cors');
++const mongoose = require('mongoose');
++const cron = require('node-cron');
++
++const notificationService = require('./services/notificationService');
++const epaTrainer = require('./services/epaTrainer');
++const epaService = require('./services/epaService');
++
++const metricsRoutes = require('./routes/metricsRoutes');
++const exportRoutes = require('./routes/exportRoutes');
++const syncStateRoutes = require('./routes/syncStateRoutes');
++const notificationRoutes = require('./routes/notificationRoutes');
++
++let syncRoutes = null;
++try { syncRoutes = require('./routes/syncRoutes'); } catch (err) { console.warn('syncRoutes not found; skipping mount'); }
++
++const app = express();
++
++app.use(cors());
++app.use(express.json({ limit: '10mb' }));
++app.use(express.urlencoded({ extended: true }));
++app.use(morgan('dev'));
++
++app.get('/api/health', (req, res) => res.json({ ok: true, uptime: process.uptime() }));
++
++app.use('/api/metrics', metricsRoutes);
++app.use('/api/export', exportRoutes);
++app.use('/api/syncstate', syncStateRoutes);
++app.use('/api/notifications', notificationRoutes);
++if (syncRoutes) app.use('/api/sync', syncRoutes);
++
++const publicBuildPath = path.join(__dirname, '..', 'frontend', 'build');
++app.use(express.static(publicBuildPath));
++app.get('/', (req, res) => {
++  res.sendFile(path.join(publicBuildPath, 'index.html'));
++});
++
++const adminBuildPath = path.join(__dirname, '..', 'frontend', 'admin', 'build');
++app.use('/admin/static', express.static(path.join(adminBuildPath, 'static')));
++app.get('/admin/*', (req, res) => {
++  res.sendFile(path.join(adminBuildPath, 'index.html'));
++});
++
++app.use((req, res, next) => {
++  res.status(404).json({ ok: false, error: 'Not Found' });
++});
++
++app.use((err, req, res, next) => {
++  console.error('Unhandled error:', err && err.stack ? err.stack : err);
++  res.status(err.status || 500).json({ ok: false, error: err.message || 'Internal server error' });
++});
++
++const PORT = Number(process.env.PORT || 4000);
++const MONGO_URI = process.env.MONGO_URI;
++if (!MONGO_URI) {
++  console.error('MONGO_URI not set. Please configure.');
++  process.exit(1);
++}
++
++mongoose.set('strictQuery', false);
++mongoose.connect(MONGO_URI, {
++  useNewUrlParser: true,
++  useUnifiedTopology: true,
++}).then(async () => {
++  console.log('✅ Connected to MongoDB:', mongoose.connection.db.databaseName);
++
++  try {
++    await notificationService.start();
++    console.log('🔔 notificationService started');
++  } catch (err) {
++    console.warn('notificationService failed to start:', err && err.message ? err.message : err);
++  }
++
++  const TRAINING_CRON = process.env.TRAINING_CRON || '0 3 * * *';
++  cron.schedule(TRAINING_CRON, async () => {
++    console.log(`[${new Date().toISOString()}] Cron: starting nightly EPA training & recompute`);
++    try {
++      const seasonsEnv = process.env.TRAINING_SEASONS || `${new Date().getFullYear()}`;
++      const seasons = seasonsEnv.split(',').map(s => Number(s.trim())).filter(Boolean);
++      for (const season of seasons) {
++        console.log(`🔁 Training EPAModel for season ${season}...`);
++        await epaTrainer.trainEPAModel({ season, lookbackGames: Number(process.env.EPA_TRAIN_LOOKBACK_GAMES || 1000) });
++        console.log(`🔁 Recomputing EPA for season ${season}...`);
++        await epaService.computeEPAForSeason(season);
++      }
++      console.log(`✅ Nightly EPA training & recompute finished`);
++    } catch (err) {
++      console.error('Nightly EPA job error:', err && err.message ? err.message : err);
++    }
++  }, {
++    scheduled: true,
++    timezone: process.env.TRAINING_TZ || 'UTC'
++  });
++
++  if (process.env.RUN_EPA_ON_STARTUP === 'true') {
++    (async () => {
++      try {
++        const season = Number(process.env.SYNC_SEASON || new Date().getFullYear());
++        await epaTrainer.trainEPAModel({ season });
++        await epaService.computeEPAForSeason(season);
++        console.log('✅ EPA trained & computed on startup');
++      } catch (err) {
++        console.error('EPA on startup failed:', err && err.message ? err.message : err);
++      }
++    })();
++  }
++
++  app.listen(PORT, () => {
++    console.log(`🚀 Server listening at http://localhost:${PORT}`);
++    console.log(`🔧 Admin UI served at http://localhost:${PORT}/admin/`);
++  });
++}).catch(err => {
++  console.error('Mongo connection failed:', err && err.message ? err.message : err);
++  process.exit(1);
++});
++
++module.exports = app;
++
+*** End Patch
+*** Begin Patch
+*** Add File: frontend/admin/package.json
++{
++  "name": "client-admin",
++  "version": "0.1.0",
++  "private": true,
++  "dependencies": {
++    "axios": "^1.4.0",
++    "react": "^18.2.0",
++    "react-dom": "^18.2.0",
++    "react-scripts": "5.0.1"
++  },
++  "scripts": {
++    "start": "react-scripts start",
++    "build": "react-scripts build",
++    "test": "react-scripts test --env=jsdom",
++    "eject": "react-scripts eject"
++  }
++}
++
+*** End Patch
+*** Begin Patch
+*** Add File: frontend/admin/public/index.html
++<!doctype html>
++<html>
++  <head>
++    <meta charset="utf-8" />
++    <title>Admin - SyncState & Notifications</title>
++    <meta name="viewport" content="width=device-width, initial-scale=1" />
++  </head>
++  <body>
++    <div id="root"></div>
++  </body>
++</html>
++
+*** End Patch
+*** Begin Patch
+*** Add File: frontend/admin/src/index.js
++import React from 'react';
++import { createRoot } from 'react-dom/client';
++import App from './App';
++import './index.css';
++
++const root = createRoot(document.getElementById('root'));
++root.render(<App />);
++
+*** End Patch
+*** Begin Patch
+*** Add File: frontend/admin/src/index.css
++body { font-family: Arial, Helvetica, sans-serif; margin: 0; padding: 0; background:#f4f6fb; }
++.container { max-width:1100px; margin:16px auto; padding:16px; }
++.header { display:flex; justify-content:space-between; align-items:center; background:#0b3d91; color:#fff; padding:12px 16px; border-radius:6px; }
++.card { background:#fff; padding:12px; border-radius:6px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); margin-top:12px; }
++table { width:100%; border-collapse: collapse; }
++th,td { border:1px solid #eee; padding:8px; text-align:left; }
++button { padding:6px 10px; margin-left:6px; background:#0b3d91; color:#fff; border:none; border-radius:4px; cursor:pointer; }
++
+*** End Patch
+*** Begin Patch
+*** Add File: frontend/admin/src/api.js
++import axios from 'axios';
++const API_BASE = process.env.REACT_APP_API_BASE || '';
++
++export function fetchSyncStates() {
++  return axios.get(`${API_BASE}/api/syncstate`).then(r => r.data);
++}
++export function resetSyncState(key, cursor = null) {
++  return axios.post(`${API_BASE}/api/syncstate/reset`, { key, cursor }).then(r => r.data);
++}
++export function listWebhooks() { return axios.get(`${API_BASE}/api/notifications/webhooks`).then(r => r.data); }
++export function createWebhook(payload) { return axios.post(`${API_BASE}/api/notifications/webhooks`, payload).then(r => r.data); }
++export function deleteWebhook(id) { return axios.delete(`${API_BASE}/api/notifications/webhooks/${id}`).then(r => r.data); }
++export function listAlerts() { return axios.get(`${API_BASE}/api/notifications/alerts`).then(r => r.data); }
++export function createAlert(payload) { return axios.post(`${API_BASE}/api/notifications/alerts`, payload).then(r => r.data); }
++export function deleteAlert(id) { return axios.delete(`${API_BASE}/api/notifications/alerts/${id}`).then(r => r.data); }
++
+*** End Patch
+*** Begin Patch
+*** Add File: frontend/admin/src/App.js
++import React, { useState } from 'react';
++import SyncState from './components/SyncState';
++import Webhooks from './components/Webhooks';
++import Alerts from './components/Alerts';
++
++export default function App() {
++  const [tab, setTab] = useState('syncstate');
++
++  return (
++    <div className="container">
++      <div className="header">
++        <h1>Admin Dashboard</h1>
++        <div>
++          <button onClick={() => setTab('syncstate')}>SyncState</button>
++          <button onClick={() => setTab('webhooks')}>Webhooks</button>
++          <button onClick={() => setTab('alerts')}>Alerts</button>
++        </div>
++      </div>
++
++      <div className="card">
++        {tab === 'syncstate' && <SyncState />}
++        {tab === 'webhooks' && <Webhooks />}
++        {tab === 'alerts' && <Alerts />}
++      </div>
++    </div>
++  );
++}
++
+*** End Patch
+*** Begin Patch
+*** Add File: frontend/admin/src/components/SyncState.js
++import React, { useEffect, useState } from 'react';
++import { fetchSyncStates, resetSyncState } from '../api';
++
++export default function SyncState() {
++  const [states, setStates] = useState([]);
++  const [loading, setLoading] = useState(false);
++
++  async function load() {
++    setLoading(true);
++    try {
++      const res = await fetchSyncStates();
++      if (res.ok) setStates(res.states || []);
++    } catch (err) {
++      console.error(err);
++      alert('Failed to load sync states');
++    } finally {
++      setLoading(false);
++    }
++  }
++
++  useEffect(() => { load(); }, []);
++
++  async function onReset(key) {
++    if (!window.confirm(`Reset cursor for ${key}?`)) return;
++    await resetSyncState(key, null);
++    load();
++  }
++
++  return (
++    <div>
++      <h2>SyncState Dashboard</h2>
++      <button onClick={load} disabled={loading}>{loading ? 'Loading...' : 'Refresh'}</button>
++      <table>
++        <thead><tr><th>Key</th><th>Cursor</th><th>Meta</th><th>Updated</th><th>Actions</th></tr></thead>
++        <tbody>
++          {states.map(s => (
++            <tr key={s.key}>
++              <td>{s.key}</td>
++              <td>{String(s.cursor)}</td>
++              <td><pre style={{whiteSpace:'pre-wrap'}}>{JSON.stringify(s.meta || {}, null, 2)}</pre></td>
++              <td>{new Date(s.updatedAt).toLocaleString()}</td>
++              <td><button onClick={() => onReset(s.key)}>Reset</button></td>
++            </tr>
++          ))}
++        </tbody>
++      </table>
++    </div>
++  );
++}
++
+*** End Patch
+*** Begin Patch
+*** Add File: frontend/admin/src/components/Webhooks.js
++import React, { useEffect, useState } from 'react';
++import { listWebhooks, createWebhook, deleteWebhook } from '../api';
++
++export default function Webhooks() {
++  const [webhooks, setWebhooks] = useState([]);
++  const [url, setUrl] = useState('');
++  const [events, setEvents] = useState('injury.update,metric.update');
++
++  async function load() {
++    try {
++      const res = await listWebhooks();
++      if (res.ok) setWebhooks(res.webhooks || []);
++    } catch (err) { console.error(err); alert('Failed to fetch webhooks'); }
++  }
++  useEffect(() => { load(); }, []);
++
++  async function onCreate() {
++    if (!url) return alert('url required');
++    const ev = events.split(',').map(e => e.trim()).filter(Boolean);
++    const res = await createWebhook({ url, events: ev });
++    if (res.ok) { setUrl(''); setEvents('injury.update,metric.update'); load(); }
++  }
++
++  async function onDelete(id) {
++    if (!confirm('Delete webhook?')) return;
++    await deleteWebhook(id);
++    load();
++  }
++
++  return (
++    <div>
++      <h2>Webhooks</h2>
++      <div>
++        <input placeholder="Webhook URL" value={url} onChange={e=>setUrl(e.target.value)} style={{width:'400px'}} />
++        <input placeholder="events (comma)" value={events} onChange={e=>setEvents(e.target.value)} style={{width:'300px', marginLeft:8}} />
++        <button onClick={onCreate}>Create</button>
++      </div>
++      <table>
++        <thead><tr><th>URL</th><th>Events</th><th>Active</th><th>LastStatus</th><th>Actions</th></tr></thead>
++        <tbody>
++          {webhooks.map(w => (
++            <tr key={w._id}>
++              <td>{w.url}</td>
++              <td>{(w.events||[]).join(', ')}</td>
++              <td>{String(w.active)}</td>
++              <td><pre style={{whiteSpace:'pre-wrap'}}>{JSON.stringify(w.lastStatus || {}, null, 2)}</pre></td>
++              <td><button onClick={()=>onDelete(w._id)}>Delete</button></td>
++            </tr>
++          ))}
++        </tbody>
++      </table>
++    </div>
++  );
++}
++
+*** End Patch
+*** Begin Patch
+*** Add File: frontend/admin/src/components/Alerts.js
++import React, { useEffect, useState } from 'react';
++import { listAlerts, createAlert, deleteAlert } from '../api';
++import { listWebhooks } from '../api';
++
++export default function Alerts() {
++  const [alerts, setAlerts] = useState([]);
++  const [webhooks, setWebhooks] = useState([]);
++  const [form, setForm] = useState({ name:'', entityType:'player', entityId:'', metric:'passer_rating', operator:'gt', value:'95', webhookId:'' });
++
++  async function load() {
++    try {
++      const [a, w] = await Promise.all([listAlerts(), listWebhooks()]);
++      if (a.ok) setAlerts(a.alerts || []);
++      if (w.ok) setWebhooks(w.webhooks || []);
++    } catch (err) { console.error(err); alert('Failed to load alerts'); }
++  }
++
++  useEffect(() => { load(); }, []);
++
++  async function onCreate() {
++    const payload = { ...form, value: Number(form.value) };
++    const res = await createAlert(payload);
++    if (res.ok) { setForm({ name:'', entityType:'player', entityId:'', metric:'passer_rating', operator:'gt', value:'95', webhookId:'' }); load(); }
++  }
++
++  async function onDelete(id) {
++    if (!confirm('Delete alert?')) return;
++    await deleteAlert(id);
++    load();
++  }
++
++  return (
++    <div>
++      <h2>Alerts</h2>
++      <div style={{marginBottom:12}}>
++        <input placeholder="Name" value={form.name} onChange={e=>setForm({...form, name:e.target.value})} />
++        <select value={form.entityType} onChange={e=>setForm({...form, entityType:e.target.value})} style={{marginLeft:8}}>
++          <option value="player">player</option><option value="team">team</option>
++        </select>
++        <input placeholder="entityId" value={form.entityId} onChange={e=>setForm({...form, entityId:e.target.value})} style={{width:80, marginLeft:8}} />
++        <input placeholder="metric" value={form.metric} onChange={e=>setForm({...form, metric:e.target.value})} style={{marginLeft:8}} />
++        <select value={form.operator} onChange={e=>setForm({...form, operator:e.target.value})} style={{marginLeft:8}}>
++          <option value="gt">gt</option><option value="gte">gte</option><option value="lt">lt</option><option value="lte">lte</option><option value="eq">eq</option>
++        </select>
++        <input placeholder="value" value={form.value} onChange={e=>setForm({...form, value:e.target.value})} style={{width:80, marginLeft:8}} />
++        <select value={form.webhookId} onChange={e=>setForm({...form, webhookId:e.target.value})} style={{marginLeft:8}}>
++          <option value="">select webhook</option>
++          {webhooks.map(w => <option key={w._id} value={w._id}>{w.url}</option>)}
++        </select>
++        <button onClick={onCreate} style={{marginLeft:8}}>Create</button>
++      </div>
++
++      <table>
++        <thead><tr><th>Name</th><th>Entity</th><th>Metric</th><th>Op</th><th>Value</th><th>Webhook</th><th>Active</th><th>Actions</th></tr></thead>
++        <tbody>
++          {alerts.map(a => (
++            <tr key={a._id}>
++              <td>{a.name}</td>
++              <td>{a.entityType}:{a.entityId}</td>
++              <td>{a.metric}</td>
++              <td>{a.operator}</td>
++              <td>{a.value}</td>
++              <td>{a.webhook?.url || a.webhook}</td>
++              <td>{String(a.active)}</td>
++              <td><button onClick={()=>onDelete(a._id)}>Delete</button></td>
++            </tr>
++          ))}
++        </tbody>
++      </table>
++    </div>
++  );
++}
++
+*** End Patch
+*** End Patch
