@@ -1,0 +1,61 @@
+{
+  "name": "nfl-cards-server",
+  "version": "1.0.0",
+  "description": "NFL Cards backend — syncs BallDon'tLie NFL data (players, teams, games, stats, injuries, odds, plays) into MongoDB and computes derived metrics.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js",
+    "health": "node -e \"console.log('ok')\"",
+    "sync:players": "node server/scripts/testSync.js",
+    "sync:teams": "node server/scripts/syncAllTeams.js",
+    "sync:games": "node -e \"require('./server/services/syncService').syncGames({per_page:100}).then(console.log).catch(err=>{console.error(err);process.exit(1)})\"",
+    "sync:stats": "node -e \"require('./server/services/syncService').syncStats({per_page:100}).then(console.log).catch(err=>{console.error(err);process.exit(1)})\"",
+    "sync:standings": "node -e \"require('./server/services/derivedService').syncStandingsFromAPI({season:2024,per_page:100}).then(console.log).catch(err=>{console.error(err);process.exit(1)})\"",
+    "sync:teamseason": "node -e \"require('./server/services/derivedService').syncTeamSeasonStats({season:2024,per_page:100}).then(console.log).catch(err=>{console.error(err);process.exit(1)})\"",
+    "sync:advanced:rushing": "node -e \"require('./server/services/derivedService').syncAdvancedStatsEndpoint('rushing',{season:2024,per_page:100}).then(console.log).catch(err=>{console.error(err);process.exit(1)})\"",
+    "sync:advanced:passing": "node -e \"require('./server/services/derivedService').syncAdvancedStatsEndpoint('passing',{season:2024,per_page:100}).then(console.log).catch(err=>{console.error(err);process.exit(1)})\"",
+    "sync:advanced:receiving": "node -e \"require('./server/services/derivedService').syncAdvancedStatsEndpoint('receiving',{season:2024,per_page:100}).then(console.log).catch(err=>{console.error(err);process.exit(1)})\"",
+    "sync:plays": "node -e \"require('./server/services/derivedService').syncPlays({per_page:100}).then(console.log).catch(err=>{console.error(err);process.exit(1)})\"",
+    "sync:odds": "node -e \"require('./server/services/derivedService').syncOdds({per_page:100}).then(console.log).catch(err=>{console.error(err);process.exit(1)})\"",
+    "sync:playerprops": "node -e \"console.error('Set GAME_ID in script or pass via script'); process.exit(1)\"",
+    "sync:injuries": "node server/scripts/syncInjuries.js",
+    "sync:data": "node server/scripts/syncAllData.js",
+    "compute:derived": "node server/scripts/computeAllDerived.js",
+    "compute:matchups": "node -e \"require('./server/services/derivedService').computeMatchups().then(()=>{console.log('done');process.exit(0)}).catch(err=>{console.error(err);process.exit(1)})\"",
+    "compute:metrics": "node -e \"require('./server/services/derivedService').computeAdvancedStats().then(()=>{console.log('done');process.exit(0)}).catch(err=>{console.error(err);process.exit(1)})\"",
+    "test": "echo \"No tests configured\" && exit 0"
+  },
+  "dependencies": {
+    "axios": "^1.7.9",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.0",
+    "mongoose": "^8.19.2",
+    "morgan": "^1.10.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "nfl",
+    "balldontlie",
+    "mongodb",
+    "sync",
+    "players",
+    "games",
+    "stats",
+    "injuries",
+    "standings",
+    "matchups",
+    "advanced-stats",
+    "odds",
+    "plays",
+    "player-props"
+  ],
+  "author": "Eddie Comeau",
+  "license": "ISC"
+}

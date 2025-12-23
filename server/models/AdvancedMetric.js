@@ -1,46 +1,17 @@
 // server/models/AdvancedMetric.js
-const mongoose = require("mongoose");
+const mongoose = require('mongoose');
 
-/**
- * AdvancedMetric
- *
- * Stores both raw "bdl" advanced stats and computed (from raw Stat docs)
- * and a merged `metrics` view (preferred for read).
- *
- * Schemas:
- * - entityType: 'player' | 'team'
- * - entityId: numeric id (bdlId or teamId)
- * - season: number
- * - scope: 'season' | 'week' | 'rolling-N' | etc.
- * - gameCount: number (from computed or BDL)
- * - sources: { bdl: {...}, computed: {...} }   // keep raw payloads
- * - metrics: merged object (bdl preferred, computed fallback)
- */
-const AdvancedMetricSchema = new mongoose.Schema(
-  {
-    entityType: { type: String, required: true, enum: ["player", "team"] },
-    entityId: { type: Number, required: true, index: true },
-    season: { type: Number, required: true, index: true },
-    scope: { type: String, default: "season" },
+const AdvancedMetricSchema = new mongoose.Schema({
+  key: { type: String, required: true, index: true }, // e.g., 'advanced:passing:season:2024:player:123'
+  entityType: { type: String, enum: ['player','team'], required: true },
+  entityId: { type: Number, required: true, index: true },
+  season: Number,
+  scope: { type: String, default: 'season' },
+  metrics: { type: mongoose.Schema.Types.Mixed, default: {} }, // computed metrics / raw
+  sources: { type: mongoose.Schema.Types.Mixed, default: {} }, // store raw BDL payloads or source metadata
+  raw: { type: mongoose.Schema.Types.Mixed, default: null }
+}, { timestamps: true });
 
-    // number of games used to compute metrics (if available)
-    gameCount: { type: Number, default: 0 },
+AdvancedMetricSchema.index({ entityType: 1, entityId: 1, season: 1 });
 
-    // the primary merged metrics object used for reads
-    metrics: { type: mongoose.Schema.Types.Mixed, default: {} },
-
-    // raw sources: keep BDL endpoint payload and computed values separately
-    sources: {
-      bdl: { type: mongoose.Schema.Types.Mixed, default: null },       // raw BDL advanced stat payload
-      computed: { type: mongoose.Schema.Types.Mixed, default: null },  // our computed sums/averages
-    },
-
-    // convenience raw field
-    raw: { type: mongoose.Schema.Types.Mixed, default: null }
-  },
-  { timestamps: true }
-);
-
-AdvancedMetricSchema.index({ entityType: 1, entityId: 1, season: 1, scope: 1 }, { unique: true });
-
-module.exports = mongoose.model("AdvancedMetric", AdvancedMetricSchema);
+module.exports = mongoose.model('AdvancedMetric', AdvancedMetricSchema);
