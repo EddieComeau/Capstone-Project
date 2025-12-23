@@ -13,7 +13,7 @@
     "sync:data": "node scripts/syncAllData.js",
     "sync:games": "node -e \"require('./services/syncService').syncGames().then(res=>{console.log(res);process.exit(0)}).catch(err=>{console.error(err);process.exit(1)})\"",
     "sync:stats": "node -e \"require('./services/syncService').syncStats().then(res=>{console.log(res);process.exit(0)}).catch(err=>{console.error(err);process.exit(1)})\"",
-    "sync:injuries": "node -e \"require('./services/derivedService').syncInjuriesFromAPI({per_page:100}).then(res=>{console.log(res);process.exit(0)}).catch(err=>{console.error(err);process.exit(1)})\"",
+    "sync:injuries": "node scripts/syncInjuries.js",
     "compute:derived": "node scripts/computeAllDerived.js",
     "compute:matchups": "node -e \"require('./services/derivedService').computeMatchups().then(()=>{console.log('done');process.exit(0)}).catch(err=>{console.error(err);process.exit(1)})\"",
     "test": "echo \"No tests configured\" && exit 0"
