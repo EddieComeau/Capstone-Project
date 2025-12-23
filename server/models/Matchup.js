@@ -1,50 +1,22 @@
 // server/models/Matchup.js
 const mongoose = require("mongoose");
-const { Schema } = mongoose;
 
-const matchupSchema = new Schema(
+/**
+ * Matchup document - precomputed comparison between two teams for a given game
+ */
+const MatchupSchema = new mongoose.Schema(
   {
-    ballDontLieGameId: {
-      type: Number,
-      required: true,
-      unique: true,
-    },
-
-    season: {
-      type: Number,
-      required: true,
-    },
-    week: {
-      type: Number,
-      required: true,
-    },
-    postseason: {
-      type: Boolean,
-      default: false,
-    },
-
-    homeTeam: {
-      type: Schema.Types.ObjectId,
-      ref: "Team",
-      required: true,
-    },
-    awayTeam: {
-      type: Schema.Types.ObjectId,
-      ref: "Team",
-      required: true,
-    },
-
-    homeScore: Number,
-    awayScore: Number,
-
-    status: String, // scheduled, in_progress, final, etc.
-    kickoffTime: Date,
-    venue: String,
-
-    spread: Number, // optional betting info (home spread)
-    overUnder: Number,
+    gameId: { type: Number, required: true, index: true, unique: true },
+    season: Number,
+    week: Number,
+    homeTeamId: Number,
+    visitorTeamId: Number,
+    homeMetrics: { type: mongoose.Schema.Types.Mixed, default: {} },
+    visitorMetrics: { type: mongoose.Schema.Types.Mixed, default: {} },
+    comparison: { type: mongoose.Schema.Types.Mixed, default: {} }, // e.g., diff in yards/game, winPct diff
+    raw: { type: mongoose.Schema.Types.Mixed, default: null },
   },
   { timestamps: true }
 );
 
-module.exports = mongoose.model("Matchup", matchupSchema);
+module.exports = mongoose.model("Matchup", MatchupSchema);

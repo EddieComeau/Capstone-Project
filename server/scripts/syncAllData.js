@@ -1,0 +1,46 @@
+#!/usr/bin/env node
+// server/scripts/syncAllData.js
+require('dotenv').config();
+const mongoose = require('mongoose');
+const sync = require('../services/syncService');
+
+async function main() {
+  if (!process.env.MONGO_URI || !process.env.BALLDONTLIE_API_KEY) {
+    console.error('Missing MONGO_URI or BALLDONTLIE_API_KEY');
+    process.exit(1);
+  }
+
+  await mongoose.connect(process.env.MONGO_URI);
+  console.log('Connected to MongoDB:', mongoose.connection.db.databaseName);
+
+  // 1) Sync all teams (if desired)
+  console.log('\n=== Syncing all teams (reconciliation) ===');
+  // If you already have teams, this will upsert and be quick.
+  const teamsResult = await sync.syncPlayers(); // Optional - players again - or call team-specific sync function if you made one
+
+  // 2) Sync per-team players (32 teams) - sequential
+  console.log('\n=== Syncing per-team players (32 teams) ===');
+  const perTeamScript = require('./syncAllTeams'); // reuse earlier per-team runner (if present)
+  if (perTeamScript && typeof perTeamScript === 'function') {
+    await perTeamScript();
+  } else {
+    // fallback: call syncAllTeamsForWeek or call syncPlayers as catch-all
+    await sync.syncPlayers();
+  }
+
+  // 3) Sync games
+  console.log('\n=== Syncing games ===');
+  await sync.syncGames();
+
+  // 4) Sync stats
+  console.log('\n=== Syncing stats ===');
+  await sync.syncStats();
+
+  await mongoose.connection.close();
+  console.log('All done — DB connection closed');
+}
+
+main().catch(err => {
+  console.error('syncAllData error:', err && err.message ? err.message : err);
+  process.exit(1);
+});

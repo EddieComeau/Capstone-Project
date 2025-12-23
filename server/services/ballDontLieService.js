@@ -2,8 +2,6 @@
 const { bdlList } = require('../utils/apiUtils');
 
 async function listPlayers(params = {}) {
-  // Use the canonical endpoint per BDL NFL spec:
-  // GET https://api.balldontlie.io/nfl/v1/players
   return bdlList('/nfl/v1/players', params);
 }
 
@@ -16,8 +14,26 @@ async function listTeams(params = {}) {
   return bdlList('/nfl/v1/teams', params);
 }
 
+/**
+ * List games from Ball Don't Lie NFL API
+ * GET /nfl/v1/games
+ */
+async function listGames(params = {}) {
+  return bdlList('/nfl/v1/games', params);
+}
+
+/**
+ * List stats from Ball Don't Lie NFL API
+ * GET /nfl/v1/stats
+ */
+async function listStats(params = {}) {
+  return bdlList('/nfl/v1/stats', params);
+}
+
 module.exports = {
   listPlayers,
   getPlayer,
   listTeams,
+  listGames,
+  listStats,
 };

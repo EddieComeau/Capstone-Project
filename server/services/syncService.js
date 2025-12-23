@@ -1,17 +1,21 @@
 // server/services/syncService.js
-// All syncing logic centralized here.
+// Centralized sync logic for players, teams, games, stats (Ball Don't Lie NFL API)
+// Uses cursor-based pagination and Mongo bulkWrite for performance
 
 const ballDontLieService = require('./ballDontLieService');
-const { ensureTeam } = require("../utils/teamUtils");
-const { bdlList } = require("../utils/apiUtils");
-const Player = require("../models/Player");
+const { ensureTeam } = require('../utils/teamUtils');
+const { bdlList } = require('../utils/apiUtils');
+
+const Player = require('../models/Player');
+const Game = require('../models/Game');
+const Stat = require('../models/Stat');
 
 /**
- * Bulk batch size for Mongo bulkWrite; tune with env SYNC_BULK_BATCH_SIZE
+ * Bulk batch size for Mongo bulkWrite; can be tuned with env var SYNC_BULK_BATCH_SIZE
  */
 const BULK_BATCH_SIZE = Number(process.env.SYNC_BULK_BATCH_SIZE || 500);
 
-/** Helper to flush bulk ops array via Player.bulkWrite */
+/** Flush bulk ops helper */
 async function flushBulkOps(bulkOpsArr) {
   if (!bulkOpsArr || bulkOpsArr.length === 0) return { executed: 0, result: null };
   const ops = bulkOpsArr.splice(0, bulkOpsArr.length);
@@ -19,58 +23,75 @@ async function flushBulkOps(bulkOpsArr) {
     const res = await Player.bulkWrite(ops, { ordered: false });
     return { executed: ops.length, result: res };
   } catch (err) {
-    console.error('❌ bulkWrite error:', err && err.message ? err.message : err);
-    // return executed count as attempted length
+    // If Player.bulkWrite failed (e.g., because ops are for other models), try executing against the appropriate model.
+    // But since we share flushBulkOps across models, detect which model should run them by scanning ops.
+    // Fallback: reattempt using Game or Stat if Player.bulkWrite fails due to schema issues.
+    // For simplicity, return error and executed count.
+    console.error('❌ bulkWrite failed (Player):', err && err.message ? err.message : err);
     return { executed: ops.length, result: err };
   }
 }
 
 /**
- * Sync all players (no team filter). Uses /nfl/v1/players and cursor pagination.
- * Returns { ok, fetched, upsertCount, pages, next_cursor }.
+ * Generic flush helper for a specified model (Player, Game, Stat)
+ */
+async function flushBulkOpsForModel(bulkOpsArr, model) {
+  if (!bulkOpsArr || bulkOpsArr.length === 0) return { executed: 0, result: null };
+  const ops = bulkOpsArr.splice(0, bulkOpsArr.length);
+  try {
+    const res = await model.bulkWrite(ops, { ordered: false });
+    return { executed: ops.length, result: res };
+  } catch (err) {
+    console.error(`❌ bulkWrite failed for model ${model.modelName}:`, err && err.message ? err.message : err);
+    return { executed: ops.length, result: err };
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/*                             Player sync functions                          */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Sync players across the whole BDL players endpoint (no team filter).
+ * options: { per_page, cursor, maxPages }
+ * Returns { ok, fetched, upsertCount, pages, next_cursor }
  */
 async function syncPlayers(options = {}, { PlayerModel } = {}) {
   const PlayerToUse = PlayerModel || Player;
   const per_page = Number(options.per_page || 100);
-
   let cursor = options.cursor || null;
   let fetched = 0;
   let upsertCount = 0;
-  const maxPages = Number(options.maxPages || 1000); // keep high if you truly want whole league
+  const maxPages = Number(options.maxPages || 1000);
   let pageCount = 0;
   let previousCursor = null;
 
-  console.log('Starting syncPlayers (ALL TEAMS)...');
+  console.log('🔁 syncPlayers (ALL TEAMS) starting...');
 
   while (pageCount < maxPages) {
     pageCount += 1;
-
     const params = { per_page };
     if (cursor) params.cursor = cursor;
 
-    // Log what we are requesting (important for debugging)
-    console.log(`📄 Fetching page ${pageCount} with params:`, JSON.stringify(params));
-
-    // Use the canonical players endpoint (no team filter)
-    const response = await bdlList('/nfl/v1/players', params);
-
-    const players = (response && response.data) ? response.data : (Array.isArray(response) ? response : []);
-    const meta = (response && response.meta) ? response.meta : {};
+    console.log(`📄 Fetching player page ${pageCount} params:`, JSON.stringify(params));
+    // use service helper
+    const payload = await ballDontLieService.listPlayers(params);
+    const players = payload && payload.data ? payload.data : (Array.isArray(payload) ? payload : []);
+    const meta = payload && payload.meta ? payload.meta : {};
 
     fetched += players.length;
     console.log(`   Received ${players.length} players`);
 
-    // Guard: break on stuck cursor
     if (cursor && cursor === previousCursor) {
-      console.warn('⚠️ Cursor did not advance; breaking to prevent infinite loop');
+      console.warn('⚠️ Cursor did not advance; aborting to avoid infinite loop');
       break;
     }
 
-    // Build bulk ops
+    // Bulk ops for Player model
     const bulkOps = [];
     for (const p of players) {
       if (!p || !p.id) {
-        console.warn('⚠️ Skipping player with missing id:', p);
+        console.warn('⚠️ Skipping invalid player record', p);
         continue;
       }
 
@@ -95,13 +116,13 @@ async function syncPlayers(options = {}, { PlayerModel } = {}) {
       });
 
       if (bulkOps.length >= BULK_BATCH_SIZE) {
-        const { executed } = await flushBulkOps(bulkOps);
+        const { executed } = await flushBulkOpsForModel(bulkOps, PlayerToUse);
         upsertCount += executed;
       }
     }
 
     if (bulkOps.length > 0) {
-      const { executed } = await flushBulkOps(bulkOps);
+      const { executed } = await flushBulkOpsForModel(bulkOps, PlayerToUse);
       upsertCount += executed;
     }
 
@@ -109,7 +130,6 @@ async function syncPlayers(options = {}, { PlayerModel } = {}) {
     console.log(`   Next cursor: ${nextCursor || 'null (last page)'}`);
 
     if (!nextCursor || players.length === 0) {
-      console.log('✅ Reached end of pagination');
       cursor = nextCursor;
       break;
     }
@@ -119,23 +139,18 @@ async function syncPlayers(options = {}, { PlayerModel } = {}) {
   }
 
   console.log(`✅ syncPlayers complete — fetched: ${fetched}, upserted (approx): ${upsertCount}, pages: ${pageCount}`);
-
   return { ok: true, fetched, upsertCount, pages: pageCount, next_cursor: cursor };
 }
 
 /**
- * Sync players for a specific team (keeps team filter).
+ * Sync players for single team (filters by team_ids).
  * Returns { upsertCount, next_cursor }
  */
 async function syncTeamPlayers(teamAbbrev) {
-  console.log(`Starting syncTeamPlayers for ${teamAbbrev}...`);
-
+  console.log(`🔁 syncTeamPlayers starting for ${teamAbbrev}...`);
   const { teamDoc, raw } = await ensureTeam(teamAbbrev);
   const teamId = raw && raw.id ? raw.id : null;
-
-  if (!teamId) {
-    throw new Error(`Cannot determine BallDontLie team id for ${teamAbbrev}`);
-  }
+  if (!teamId) throw new Error(`Cannot determine BallDontLie team id for ${teamAbbrev}`);
 
   console.log(`Using BDL team id ${teamId} for ${teamAbbrev}`);
 
@@ -151,25 +166,20 @@ async function syncTeamPlayers(teamAbbrev) {
     if (cursor) params.cursor = cursor;
 
     console.log(`📄 Fetching team ${teamAbbrev} page ${pageCount} params:`, JSON.stringify(params));
+    const payload = await ballDontLieService.listPlayers(params);
+    const players = payload && payload.data ? payload.data : [];
+    const meta = payload && payload.meta ? payload.meta : {};
 
-    const response = await bdlList('/nfl/v1/players', params);
-    const players = (response && response.data) ? response.data : [];
-    const meta = (response && response.meta) ? response.meta : {};
-
-    console.log(`   Received ${players.length} players for team ${teamAbbrev}`);
+    console.log(`   Received ${players.length} players for ${teamAbbrev}`);
 
     if (cursor && cursor === previousCursor) {
-      console.warn('⚠️ Cursor did not advance; breaking to prevent infinite loop');
+      console.warn('⚠️ Cursor did not advance; aborting.');
       break;
     }
 
     const bulkOps = [];
     for (const p of players) {
-      if (!p || !p.id) {
-        console.warn('⚠️ Skipping player with missing id:', p);
-        continue;
-      }
-
+      if (!p || !p.id) continue;
       const update = {
         PlayerID: p.id,
         bdlId: p.id,
@@ -191,13 +201,13 @@ async function syncTeamPlayers(teamAbbrev) {
       });
 
       if (bulkOps.length >= BULK_BATCH_SIZE) {
-        const { executed } = await flushBulkOps(bulkOps);
+        const { executed } = await flushBulkOpsForModel(bulkOps, Player);
         upsertCount += executed;
       }
     }
 
     if (bulkOps.length > 0) {
-      const { executed } = await flushBulkOps(bulkOps);
+      const { executed } = await flushBulkOpsForModel(bulkOps, Player);
       upsertCount += executed;
     }
 
@@ -208,7 +218,6 @@ async function syncTeamPlayers(teamAbbrev) {
       cursor = nextCursor;
       break;
     }
-
     previousCursor = cursor;
     cursor = nextCursor;
   }
@@ -217,17 +226,211 @@ async function syncTeamPlayers(teamAbbrev) {
   return { upsertCount, next_cursor: cursor };
 }
 
-/* Weekly/team batch helpers (unchanged) */
+/* -------------------------------------------------------------------------- */
+/*                               Games & Stats sync                            */
+/* -------------------------------------------------------------------------- */
 
+/**
+ * Sync games (GET /nfl/v1/games)
+ * Returns { upsertCount, fetched, pages, next_cursor }
+ */
+async function syncGames(options = {}) {
+  const per_page = Number(options.per_page || 100);
+  let cursor = options.cursor || null;
+  let fetched = 0;
+  let upsertCount = 0;
+  const maxPages = Number(options.maxPages || 1000);
+  let pageCount = 0;
+  let previousCursor = null;
+
+  console.log('🔁 syncGames starting...');
+
+  while (pageCount < maxPages) {
+    pageCount++;
+    const params = { per_page };
+    if (cursor) params.cursor = cursor;
+
+    console.log(`📄 Fetching games page ${pageCount} params:`, JSON.stringify(params));
+    const response = await ballDontLieService.listGames(params);
+    const games = response && response.data ? response.data : [];
+    const meta = response && response.meta ? response.meta : {};
+
+    fetched += games.length;
+    console.log(`   Received ${games.length} games`);
+
+    if (cursor && cursor === previousCursor) {
+      console.warn('⚠️ Cursor did not advance; aborting.');
+      break;
+    }
+
+    const bulkOps = [];
+    for (const g of games) {
+      if (!g || !g.id) continue;
+      const update = {
+        gameId: g.id,
+        date: g.date ? new Date(g.date) : null,
+        season: g.season || null,
+        week: g.week || null,
+        status: g.status || null,
+        home_team: g.home_team || null,
+        visitor_team: g.visitor_team || null,
+        score: g.score || null,
+        raw: g,
+        updatedAt: new Date(),
+      };
+
+      bulkOps.push({
+        updateOne: {
+          filter: { gameId: g.id },
+          update: { $set: update, $setOnInsert: { createdAt: new Date() } },
+          upsert: true,
+        }
+      });
+
+      if (bulkOps.length >= BULK_BATCH_SIZE) {
+        const { executed } = await flushBulkOpsForModel(bulkOps, Game);
+        upsertCount += executed;
+      }
+    }
+
+    if (bulkOps.length > 0) {
+      const { executed } = await flushBulkOpsForModel(bulkOps, Game);
+      upsertCount += executed;
+    }
+
+    const nextCursor = meta.next_cursor || meta.nextCursor || null;
+    console.log(`   Next cursor: ${nextCursor || 'null (last page)'}`);
+
+    if (!nextCursor || games.length === 0) {
+      cursor = nextCursor;
+      break;
+    }
+
+    previousCursor = cursor;
+    cursor = nextCursor;
+  }
+
+  console.log(`✅ syncGames complete — fetched: ${fetched}, upserted (approx): ${upsertCount}, pages: ${pageCount}`);
+  return { upsertCount, fetched, pages: pageCount, next_cursor: cursor };
+}
+
+/**
+ * Sync stats (GET /nfl/v1/stats)
+ * Upserts stat records keyed by statId if present, otherwise by (gameId + playerId)
+ * Returns { upsertCount, fetched, pages, next_cursor }
+ */
+async function syncStats(options = {}) {
+  const per_page = Number(options.per_page || 100);
+  let cursor = options.cursor || null;
+  let fetched = 0;
+  let upsertCount = 0;
+  const maxPages = Number(options.maxPages || 1000);
+  let pageCount = 0;
+  let previousCursor = null;
+
+  console.log('🔁 syncStats starting...');
+
+  while (pageCount < maxPages) {
+    pageCount++;
+    const params = { per_page };
+    if (cursor) params.cursor = cursor;
+
+    console.log(`📄 Fetching stats page ${pageCount} params:`, JSON.stringify(params));
+    const response = await ballDontLieService.listStats(params);
+    const stats = response && response.data ? response.data : [];
+    const meta = response && response.meta ? response.meta : {};
+
+    fetched += stats.length;
+    console.log(`   Received ${stats.length} stat records`);
+
+    if (cursor && cursor === previousCursor) {
+      console.warn('⚠️ Cursor did not advance; aborting.');
+      break;
+    }
+
+    const bulkOps = [];
+    for (const s of stats) {
+      if (!s) continue;
+      const statId = s.id || null;
+      const gameId = s.game_id || (s.game && s.game.id) || null;
+      const playerId = s.player_id || (s.player && s.player.id) || null;
+      const teamId = s.team_id || (s.team && s.team.id) || null;
+
+      const update = {
+        statId,
+        gameId,
+        playerId,
+        teamId,
+        season: s.season || null,
+        week: s.week || null,
+        stats: s.stats || s || {},
+        raw: s,
+        updatedAt: new Date(),
+      };
+
+      // choose filter: statId if present, else composite gameId+playerId
+      let filter;
+      if (statId) filter = { statId };
+      else if (gameId && playerId) filter = { gameId, playerId };
+      else {
+        // no unique key — skip to avoid duplicates
+        console.warn('⚠️ Skipping stat record without statId or (gameId+playerId):', s);
+        continue;
+      }
+
+      bulkOps.push({
+        updateOne: {
+          filter,
+          update: { $set: update, $setOnInsert: { createdAt: new Date() } },
+          upsert: true,
+        }
+      });
+
+      if (bulkOps.length >= BULK_BATCH_SIZE) {
+        const { executed } = await flushBulkOpsForModel(bulkOps, Stat);
+        upsertCount += executed;
+      }
+    }
+
+    if (bulkOps.length > 0) {
+      const { executed } = await flushBulkOpsForModel(bulkOps, Stat);
+      upsertCount += executed;
+    }
+
+    const nextCursor = meta.next_cursor || meta.nextCursor || null;
+    console.log(`   Next cursor: ${nextCursor || 'null (last page)'}`);
+
+    if (!nextCursor || stats.length === 0) {
+      cursor = nextCursor;
+      break;
+    }
+
+    previousCursor = cursor;
+    cursor = nextCursor;
+  }
+
+  console.log(`✅ syncStats complete — fetched: ${fetched}, upserted (approx): ${upsertCount}, pages: ${pageCount}`);
+  return { upsertCount, fetched, pages: pageCount, next_cursor: cursor };
+}
+
+/* -------------------------------------------------------------------------- */
+/*                        Weekly / multi-team helpers                         */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Sync weekly data for a single team (currently delegates to syncTeamPlayers)
+ */
 async function syncWeeklyForTeam(season, week, teamAbbrev) {
-  console.log(`Syncing weekly data for ${teamAbbrev} season ${season} week ${week}`);
+  console.log(`🔁 syncWeeklyForTeam: ${teamAbbrev} season ${season} week ${week}`);
   const res = await syncTeamPlayers(teamAbbrev);
   return { season, week, teamAbbrev, syncedPlayers: res.upsertCount, next_cursor: res.next_cursor };
 }
 
-/* Sync all teams sequentially in batches of concurrency */
+/**
+ * Sync multiple teams for a week with optional concurrency (sequential by default)
+ */
 async function syncAllTeamsForWeek(season, week, options = {}) {
-  console.log(`Syncing all teams for season ${season} week ${week}`);
+  console.log(`🔁 syncAllTeamsForWeek: season ${season} week ${week}`);
   const concurrency = options.concurrency || 2;
 
   const teams = [
@@ -243,7 +446,10 @@ async function syncAllTeamsForWeek(season, week, options = {}) {
     const batchResults = await Promise.all(
       batch.map(teamAbbrev =>
         syncWeeklyForTeam(season, week, teamAbbrev)
-          .catch(err => ({ season, week, teamAbbrev, error: err.message }))
+          .catch(err => {
+            console.error(`❌ Error syncing team ${teamAbbrev}:`, err && err.message ? err.message : err);
+            return { season, week, teamAbbrev, error: err && err.message ? err.message : String(err) };
+          })
       )
     );
     results.push(...batchResults);
@@ -251,14 +457,19 @@ async function syncAllTeamsForWeek(season, week, options = {}) {
 
   const successCount = results.filter(r => !r.error).length;
   const errorCount = results.filter(r => r.error).length;
-  console.log(`✅ Sync complete: ${successCount} teams synced, ${errorCount} errors`);
-
+  console.log(`✅ syncAllTeamsForWeek complete: ${successCount} success, ${errorCount} errors`);
   return { season, week, results, successCount, errorCount };
 }
+
+/* -------------------------------------------------------------------------- */
+/*                                    Exports                                  */
+/* -------------------------------------------------------------------------- */
 
 module.exports = {
   syncPlayers,
   syncTeamPlayers,
+  syncGames,
+  syncStats,
   syncWeeklyForTeam,
   syncAllTeamsForWeek,
 };
