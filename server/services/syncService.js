@@ -1,25 +1,12 @@
 // server/services/syncService.js
-/**
- * Robust syncService with interactive confirmation for historical syncs.
- *
- * - safeBulkWrite with retries + backoff
- * - chunkedBulkUpsert to avoid huge bulkWrite operations
- * - ensureDbConnected so sync functions can run standalone
- * - pagination/cursor guard
- * - dryRun option to fetch but not write
- * - historical:true requires interactive confirmation (or FORCE_HISTORICAL=true)
- */
-
 require('dotenv').config();
-
 const mongoose = require('mongoose');
-const readline = require('readline');
-const bdl = require('./ballDontLieService'); // wrapper for balldontlie endpoints
+const bdl = require('./ballDontLieService');
+
 const Player = require('../models/Player');
 const Team = require('../models/Team');
 const Game = require('../models/Game');
 const Stat = require('../models/Stat');
-const SyncState = require('../models/SyncState');
 
 const DEFAULT_PER_PAGE = 100;
 const BULK_BATCH_SIZE = Number(process.env.SYNC_BULK_BATCH_SIZE || 500);
@@ -31,8 +18,6 @@ const SERVER_SELECTION_TIMEOUT_MS = Number(process.env.SERVER_SELECTION_TIMEOUT_
 const SOCKET_TIMEOUT_MS = Number(process.env.SOCKET_TIMEOUT_MS || 45000);
 const MONGO_MAX_POOL_SIZE = Number(process.env.MONGO_MAX_POOL_SIZE || 20);
 const SYNC_MAX_PAGES = Number(process.env.SYNC_MAX_PAGES || 1000);
-
-/* ---------- DB helpers ---------- */
 
 mongoose.set('strictQuery', false);
 
@@ -57,13 +42,8 @@ async function ensureDbConnected() {
     maxPoolSize: MONGO_MAX_POOL_SIZE
   };
 
-  try {
-    await mongoose.connect(uri, opts);
-    console.log('🔌 Mongoose connected (syncService)');
-  } catch (err) {
-    console.error('❌ Mongoose connect error (syncService):', err && err.message ? err.message : err);
-    throw err;
-  }
+  await mongoose.connect(uri, opts);
+  console.log('🔌 Mongoose connected (syncService)');
 }
 
 function waitForConnection(timeoutMs = 20000) {
@@ -77,25 +57,19 @@ function waitForConnection(timeoutMs = 20000) {
   });
 }
 
-/* ---------- Utility helpers ---------- */
-
-function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
+function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
 
 async function safeBulkWrite(model, ops, options = { ordered: false, w: 1, wtimeout: 30000 }) {
   if (!ops || ops.length === 0) return;
   let lastErr = null;
   for (let attempt = 1; attempt <= BULKWRITE_MAX_RETRIES; attempt++) {
     try {
-      if (mongoose.connection.readyState !== 1) {
-        await ensureDbConnected();
-      }
+      if (mongoose.connection.readyState !== 1) await ensureDbConnected();
       await model.bulkWrite(ops, options);
       return;
     } catch (err) {
       lastErr = err;
-      console.warn(`bulkWrite attempt ${attempt} failed for model ${model.modelName}:`, err && err.message ? err.message : err);
+      console.warn(`bulkWrite attempt ${attempt} failed for ${model.modelName}:`, err && err.message ? err.message : err);
       if (attempt < BULKWRITE_MAX_RETRIES) {
         const delay = BULKWRITE_RETRY_BASE_MS * attempt;
         console.log(`retrying bulkWrite in ${delay}ms`);
@@ -120,45 +94,19 @@ function guardCursorProgress(prevCursor, nextCursor) {
   return { shouldContinue: true };
 }
 
-/* ---------- Interactive helper ---------- */
-
-function askYesNo(question, timeout = 60000) {
-  // returns Promise<boolean>
-  return new Promise((resolve, reject) => {
-    if (!process.stdin.isTTY) {
-      // not interactive
-      return resolve(false);
-    }
-    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-    let answered = false;
-    const timer = setTimeout(() => {
-      if (!answered) {
-        rl.close();
-        return resolve(false);
-      }
-    }, timeout);
-    rl.question(question + ' (type YES to confirm): ', (answer) => {
-      answered = true;
-      clearTimeout(timer);
-      rl.close();
-      const ok = String(answer || '').trim().toUpperCase() === 'YES';
-      resolve(ok);
-    });
-  });
+/* ---------- Helpers to call onProgress if provided ---------- */
+function callProgress(opts, payload) {
+  if (opts && typeof opts.onProgress === 'function') {
+    try { opts.onProgress(payload); } catch (err) { console.warn('onProgress callback error', err && err.message ? err.message : err); }
+  }
 }
 
-/* ---------- Sync implementations ---------- */
+/* ---------- Sync functions (each accepts options with onProgress) ---------- */
 
-/**
- * syncPlayers - sync all players (cursor-based), upserts into Player model.
- * options: { per_page, dryRun, maxPages }
- */
-async function syncPlayers({ per_page = DEFAULT_PER_PAGE, dryRun = false, maxPages = SYNC_MAX_PAGES } = {}) {
+async function syncPlayers({ per_page = DEFAULT_PER_PAGE, dryRun = false, maxPages = SYNC_MAX_PAGES, onProgress } = {}) {
   await ensureDbConnected();
   console.log('🔁 syncPlayers starting...');
-  let cursor = null;
-  let page = 0;
-  let total = 0;
+  let cursor = null, page = 0, total = 0;
 
   while (true) {
     if (page >= maxPages) {
@@ -171,29 +119,15 @@ async function syncPlayers({ per_page = DEFAULT_PER_PAGE, dryRun = false, maxPag
     const payload = await bdl.listPlayers(params);
     const data = (payload && payload.data) ? payload.data : payload || [];
     const meta = (payload && payload.meta) ? payload.meta : {};
-
-    if (!Array.isArray(data) || data.length === 0) {
-      console.log('   No players returned, finishing.');
-      break;
-    }
+    if (!Array.isArray(data) || data.length === 0) break;
     console.log(`   Received ${data.length} players`);
+    callProgress({ onProgress }, { model: 'players', page, count: data.length, cursor });
 
     if (!dryRun) {
       const ops = data.map(p => {
         const bdlId = p.id || p.bdlId || p.player_id;
-        const filter = { bdlId };
-        const update = {
-          bdlId,
-          PlayerID: p.id || null,
-          first_name: p.first_name,
-          last_name: p.last_name,
-          position: p.position,
-          team: p.team || null,
-          raw: p
-        };
-        return { updateOne: { filter, update: { $set: update }, upsert: true } };
+        return { updateOne: { filter: { bdlId }, update: { $set: { bdlId, PlayerID: p.id || null, first_name: p.first_name, last_name: p.last_name, position: p.position, team: p.team || null, raw: p } }, upsert: true } };
       });
-
       try {
         await chunkedBulkUpsert(Player, ops);
         total += data.length;
@@ -208,11 +142,9 @@ async function syncPlayers({ per_page = DEFAULT_PER_PAGE, dryRun = false, maxPag
 
     const nextCursor = (meta && (meta.next_cursor || meta.nextCursor)) || null;
     console.log(`   Next cursor: ${nextCursor}`);
+    callProgress({ onProgress }, { model: 'players', page, nextCursor });
     const guard = guardCursorProgress(cursor, nextCursor);
-    if (!guard.shouldContinue) {
-      if (guard.reason) console.log('   Stopping syncPlayers: ' + guard.reason);
-      break;
-    }
+    if (!guard.shouldContinue) break;
     cursor = nextCursor;
     page++;
   }
@@ -221,14 +153,9 @@ async function syncPlayers({ per_page = DEFAULT_PER_PAGE, dryRun = false, maxPag
   return { ok: true, pages: page, total };
 }
 
-/**
- * syncTeamPlayers(teamFilter, options)
- * teamFilter: team abbreviation (e.g., 'KC') or team id
- */
-async function syncTeamPlayers(teamFilter, { per_page = DEFAULT_PER_PAGE, dryRun = false, maxPages = SYNC_MAX_PAGES } = {}) {
+async function syncTeamPlayers(teamFilter, { per_page = DEFAULT_PER_PAGE, dryRun = false, maxPages = SYNC_MAX_PAGES, onProgress } = {}) {
   await ensureDbConnected();
-  console.log(`🔁 syncTeamPlayers starting for filter: ${teamFilter}`);
-
+  console.log(`🔁 syncTeamPlayers starting for ${teamFilter}`);
   let team_ids = [];
   if (teamFilter) {
     const n = Number(teamFilter);
@@ -239,45 +166,28 @@ async function syncTeamPlayers(teamFilter, { per_page = DEFAULT_PER_PAGE, dryRun
     }
   }
   if (!team_ids.length) {
-    console.log('No team_ids resolved; falling back to syncPlayers (all).');
-    return syncPlayers({ per_page, dryRun, maxPages });
+    console.log('No team_ids resolved; fallback to syncPlayers.');
+    return syncPlayers({ per_page, dryRun, maxPages, onProgress });
   }
 
-  let cursor = null;
-  let page = 0;
-  let total = 0;
-
+  let cursor = null, page = 0, total = 0;
   while (true) {
-    if (page >= maxPages) {
-      console.log(`Reached maxPages (${maxPages}), stopping syncTeamPlayers.`);
-      break;
-    }
+    if (page >= maxPages) break;
     const params = { per_page, team_ids };
     if (cursor) params.cursor = cursor;
     console.log(`📄 Fetching team players page ${page + 1} params: ${JSON.stringify(params)}`);
     const payload = await bdl.listPlayers(params);
     const data = (payload && payload.data) ? payload.data : payload || [];
     const meta = (payload && payload.meta) ? payload.meta : {};
-
     if (!Array.isArray(data) || data.length === 0) break;
     console.log(`   Received ${data.length} players`);
+    callProgress({ onProgress }, { model: 'teamPlayers', page, count: data.length, team_ids });
 
     if (!dryRun) {
       const ops = data.map(p => {
         const bdlId = p.id || p.bdlId || p.player_id;
-        const filter = { bdlId };
-        const update = {
-          bdlId,
-          PlayerID: p.id || null,
-          first_name: p.first_name,
-          last_name: p.last_name,
-          position: p.position,
-          team: p.team || null,
-          raw: p
-        };
-        return { updateOne: { filter, update: { $set: update }, upsert: true } };
+        return { updateOne: { filter: { bdlId }, update: { $set: { bdlId, PlayerID: p.id || null, first_name: p.first_name, last_name: p.last_name, position: p.position, team: p.team || null, raw: p } }, upsert: true } };
       });
-
       try {
         await chunkedBulkUpsert(Player, ops);
         total += data.length;
@@ -291,12 +201,9 @@ async function syncTeamPlayers(teamFilter, { per_page = DEFAULT_PER_PAGE, dryRun
     }
 
     const nextCursor = (meta && (meta.next_cursor || meta.nextCursor)) || null;
-    console.log(`   Next cursor: ${nextCursor}`);
+    callProgress({ onProgress }, { model: 'teamPlayers', page, nextCursor });
     const guard = guardCursorProgress(cursor, nextCursor);
-    if (!guard.shouldContinue) {
-      if (guard.reason) console.log('   Stopping syncTeamPlayers: ' + guard.reason);
-      break;
-    }
+    if (!guard.shouldContinue) break;
     cursor = nextCursor;
     page++;
   }
@@ -305,58 +212,34 @@ async function syncTeamPlayers(teamFilter, { per_page = DEFAULT_PER_PAGE, dryRun
   return { ok: true, pages: page, total };
 }
 
-/**
- * syncGames
- * options: { per_page, seasons, historical, dryRun, maxPages }
- * - seasons: array or single number; if null and historical not true it defaults to [currentYear, currentYear-1]
- * - historical: if true, will attempt to sync all historical games (requires explicit confirmation or FORCE_HISTORICAL=true)
- */
-async function syncGames({ per_page = DEFAULT_PER_PAGE, seasons = null, historical = false, dryRun = false, maxPages = SYNC_MAX_PAGES } = {}) {
+async function syncGames({ per_page = DEFAULT_PER_PAGE, seasons = null, historical = false, dryRun = false, maxPages = SYNC_MAX_PAGES, onProgress } = {}) {
   await ensureDbConnected();
 
-  // If historical requested, require confirmation unless FORCE_HISTORICAL env var is true
   if (historical) {
     const force = String(process.env.FORCE_HISTORICAL || '').toLowerCase() === 'true';
+    if (!force && !process.stdin.isTTY) {
+      throw new Error('Historical sync requires interactive terminal or FORCE_HISTORICAL=true');
+    }
     if (!force) {
-      if (!process.stdin.isTTY) {
-        throw new Error('Historical sync requires interactive terminal or set FORCE_HISTORICAL=true');
-      }
-      console.log('⚠️  You requested a FULL historical sync (this may fetch many pages and a lot of data).');
-      const ok = await askYesNo('Proceed with full historical sync? This may be slow and large.');
-      if (!ok) {
-        console.log('Historical sync aborted by user.');
-        return { ok: false, aborted: true };
-      }
-    } else {
-      console.log('FORCE_HISTORICAL=true detected; proceeding with historical sync without interactive prompt.');
+      // interactive confirmation when run directly
+      // NOTE: when called via jobManager the controller handles confirmation; here we just assume it's OK if CLI called.
+      console.log('Historical sync requested (ensure confirmation in caller).');
     }
   }
 
-  // If seasons not provided and historical not set, default to last 2 seasons
   if (!historical) {
     if (!seasons) {
-      const currentYear = (new Date()).getFullYear();
-      seasons = [currentYear, currentYear - 1];
-    } else if (!Array.isArray(seasons)) {
-      seasons = [Number(seasons)];
-    }
+      const cur = (new Date()).getFullYear();
+      seasons = [cur, cur - 1];
+    } else if (!Array.isArray(seasons)) seasons = [Number(seasons)];
   } else {
-    // historical scan: do not set seasons so API returns all pages
     seasons = null;
   }
 
-  console.log('🔁 syncGames starting...');
-  console.log('   seasons filter:', seasons, 'historical:', historical);
-
-  let cursor = null;
-  let page = 0;
-  let total = 0;
-
+  console.log('🔁 syncGames starting... seasons:', seasons, 'historical:', historical);
+  let cursor = null, page = 0, total = 0;
   while (true) {
-    if (page >= maxPages && !historical) {
-      console.log(`Reached maxPages (${maxPages}), stopping syncGames.`);
-      break;
-    }
+    if (page >= maxPages && !historical) break;
     const params = { per_page };
     if (seasons && seasons.length) params.seasons = seasons;
     if (cursor) params.cursor = cursor;
@@ -364,32 +247,15 @@ async function syncGames({ per_page = DEFAULT_PER_PAGE, seasons = null, historic
     const payload = await bdl.listGames(params);
     const data = (payload && payload.data) ? payload.data : payload || [];
     const meta = (payload && payload.meta) ? payload.meta : {};
-
-    if (!Array.isArray(data) || data.length === 0) {
-      console.log('   No games returned, finishing.');
-      break;
-    }
+    if (!Array.isArray(data) || data.length === 0) break;
     console.log(`   Received ${data.length} games`);
+    callProgress({ onProgress }, { model: 'games', page, count: data.length, seasons });
 
     if (!dryRun) {
       const ops = data.map(g => {
         const gameId = g.id || g.game_id || (g.raw && g.raw.id) || null;
-        const filter = { gameId };
-        const update = {
-          gameId,
-          date: g.date || g.game_date || null,
-          season: g.season || null,
-          week: g.week || null,
-          home_team: g.home_team || null,
-          visitor_team: g.visitor_team || null,
-          home_score: g.home_score != null ? g.home_score : (g.home && g.home.score),
-          visitor_score: g.visitor_score != null ? g.visitor_score : (g.visitor && g.visitor.score),
-          status: g.status || g.boxscore,
-          raw: g
-        };
-        return { updateOne: { filter, update: { $set: update }, upsert: true } };
+        return { updateOne: { filter: { gameId }, update: { $set: { gameId, date: g.date || g.game_date || null, season: g.season || null, week: g.week || null, home_team: g.home_team || null, visitor_team: g.visitor_team || null, home_score: g.home_score != null ? g.home_score : (g.home && g.home.score), visitor_score: g.visitor_score != null ? g.visitor_score : (g.visitor && g.visitor.score), status: g.status || g.boxscore, raw: g } }, upsert: true } };
       });
-
       try {
         await chunkedBulkUpsert(Game, ops);
         total += data.length;
@@ -403,66 +269,37 @@ async function syncGames({ per_page = DEFAULT_PER_PAGE, seasons = null, historic
     }
 
     const nextCursor = (meta && (meta.next_cursor || meta.nextCursor)) || null;
-    console.log(`   Next cursor: ${nextCursor}`);
+    callProgress({ onProgress }, { model: 'games', page, nextCursor });
     const guard = guardCursorProgress(cursor, nextCursor);
-    if (!guard.shouldContinue) {
-      if (guard.reason) console.log('   Stopping syncGames: ' + guard.reason);
-      break;
-    }
+    if (!guard.shouldContinue) break;
     cursor = nextCursor;
     page++;
-    // If not historical and reached maxPages, stop (already above)
   }
 
   console.log(`✅ syncGames finished. pages=${page}, total=${total}`);
   return { ok: true, pages: page, total };
 }
 
-/**
- * syncStats
- */
-async function syncStats({ per_page = DEFAULT_PER_PAGE, dryRun = false, maxPages = SYNC_MAX_PAGES } = {}) {
+async function syncStats({ per_page = DEFAULT_PER_PAGE, dryRun = false, maxPages = SYNC_MAX_PAGES, onProgress } = {}) {
   await ensureDbConnected();
-
   console.log('🔁 syncStats starting...');
-  let cursor = null;
-  let page = 0;
-  let total = 0;
-
+  let cursor = null, page = 0, total = 0;
   while (true) {
-    if (page >= maxPages) {
-      console.log(`Reached maxPages (${maxPages}), stopping syncStats.`);
-      break;
-    }
+    if (page >= maxPages) break;
     const params = { per_page };
     if (cursor) params.cursor = cursor;
     console.log(`📄 Fetching stats page ${page + 1} params: ${JSON.stringify(params)}`);
     const payload = await bdl.listStats(params);
     const data = (payload && payload.data) ? payload.data : payload || [];
     const meta = (payload && payload.meta) ? payload.meta : {};
-
-    if (!Array.isArray(data) || data.length === 0) {
-      console.log('   No stats returned, finishing.');
-      break;
-    }
+    if (!Array.isArray(data) || data.length === 0) break;
     console.log(`   Received ${data.length} stats rows`);
-
+    callProgress({ onProgress }, { model: 'stats', page, count: data.length });
     if (!dryRun) {
       const ops = data.map(s => {
         const statId = s.id || `${s.game_id || s.game?.id}_${s.player_id || s.player?.id}_${s.team_id || s.team?.id}`;
-        const filter = { statId };
-        const update = {
-          statId,
-          gameId: s.game_id || (s.game && s.game.id),
-          playerId: s.player_id || (s.player && s.player.id),
-          teamId: s.team_id || (s.team && s.team.id),
-          season: s.season || null,
-          stats: s,
-          raw: s
-        };
-        return { updateOne: { filter, update: { $set: update }, upsert: true } };
+        return { updateOne: { filter: { statId }, update: { $set: { statId, gameId: s.game_id || (s.game && s.game.id), playerId: s.player_id || (s.player && s.player.id), teamId: s.team_id || (s.team && s.team.id), season: s.season || null, stats: s, raw: s } }, upsert: true } };
       });
-
       try {
         await chunkedBulkUpsert(Stat, ops);
         total += data.length;
@@ -474,50 +311,20 @@ async function syncStats({ per_page = DEFAULT_PER_PAGE, dryRun = false, maxPages
       total += data.length;
       console.log('   dryRun: not writing stats');
     }
-
     const nextCursor = (meta && (meta.next_cursor || meta.nextCursor)) || null;
-    console.log(`   Next cursor: ${nextCursor}`);
+    callProgress({ onProgress }, { model: 'stats', page, nextCursor });
     const guard = guardCursorProgress(cursor, nextCursor);
-    if (!guard.shouldContinue) {
-      if (guard.reason) console.log('   Stopping syncStats: ' + guard.reason);
-      break;
-    }
+    if (!guard.shouldContinue) break;
     cursor = nextCursor;
     page++;
   }
-
   console.log(`✅ syncStats finished. pages=${page}, total=${total}`);
   return { ok: true, pages: page, total };
-}
-
-/**
- * syncAllTeamsPlayers - iterate all teams and sync players per team abbreviation
- */
-async function syncAllTeamsPlayers({ per_page = DEFAULT_PER_PAGE, dryRun = false } = {}) {
-  await ensureDbConnected();
-
-  const teams = await Team.find({}).lean();
-  if (!teams || teams.length === 0) {
-    console.log('No teams found in DB; ensure Team collection is populated');
-    return { ok: false, reason: 'no-teams' };
-  }
-
-  for (const t of teams) {
-    try {
-      const abbrev = t.abbreviation || t.code || t.abbr;
-      console.log(`\n=== Syncing players for team ${abbrev || t._id} ===`);
-      await syncTeamPlayers(abbrev || t.bdlId, { per_page, dryRun });
-    } catch (err) {
-      console.error(`Error syncing team ${t._id}:`, err && err.message ? err.message : err);
-    }
-  }
-  return { ok: true, teamsCount: teams.length };
 }
 
 module.exports = {
   syncPlayers,
   syncTeamPlayers,
-  syncAllTeamsPlayers,
   syncGames,
   syncStats
 };

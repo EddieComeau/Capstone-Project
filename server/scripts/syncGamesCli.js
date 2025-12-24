@@ -1,5 +1,4 @@
-
- #!/usr/bin/env node
+#!/usr/bin/env node
 // server/scripts/syncGamesCli.js
 // Usage: node syncGamesCli.js --seasons=2023,2024 --per_page=100 --dryRun=true --historical=false --maxPages=50
 
