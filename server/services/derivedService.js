@@ -1,4 +1,3 @@
-// server/services/derivedService.js
 /**
  * derivedService - robust derived endpoints sync.
  *
@@ -115,6 +114,31 @@ function seasonsDefaultIfEmpty(seasons) {
 }
 
 /**
+ * Helper to fetch all team IDs from the BallDontLie API.
+ * This is used when team_ids are not provided for team season stats.
+ */
+async function getAllTeamIds() {
+  await ensureDbConnected();
+  const ids = [];
+  let cursor = null;
+  while (true) {
+    const params = { per_page: 100 };
+    if (cursor) params.cursor = cursor;
+    const payload = await bdl.listTeams(params);
+    const data = (payload && payload.data) ? payload.data : payload || [];
+    const meta = (payload && payload.meta) ? payload.meta : {};
+    for (const team of data) {
+      const tid = team && (team.id || team.team_id);
+      if (tid !== undefined && tid !== null) ids.push(tid);
+    }
+    const nextCursor = (meta && (meta.next_cursor || meta.nextCursor)) || null;
+    if (!nextCursor || !Array.isArray(data) || data.length === 0) break;
+    cursor = nextCursor;
+  }
+  return ids;
+}
+
+/**
  * syncSeasonStats - lightweight aggregated player season stats sync
  * Params:
  *   - season (number or array). If omitted, defaults to current year.
@@ -201,9 +225,6 @@ async function syncSeasonStats({ season = null, per_page = 100, player_ids = [],
   return results;
 }
 
-
-/* ---------- Existing functions (unchanged in behavior) ---------- */
-
 /**
  * syncStandingsFromAPI: loops last-two-seasons if season not provided
  */
@@ -251,19 +272,29 @@ async function syncStandingsFromAPI({ season = null, per_page = 100, dryRun = fa
 
 /**
  * syncTeamSeasonStats
+ *
+ * This function was updated to ensure that team_ids are always supplied when calling
+ * the BallDontLie team season stats endpoint. The API requires a team_ids array;
+ * when none are provided by the caller, we fetch all team IDs via getAllTeamIds().
  */
 async function syncTeamSeasonStats({ season = null, team_ids = [], per_page = 100, dryRun = false, maxPages = SYNC_MAX_PAGES } = {}) {
   await ensureDbConnected();
   const seasons = season ? (Array.isArray(season) ? season : [season]) : seasonsDefaultIfEmpty(null);
+  // Determine which team IDs to use. If none provided, fetch all teams.
+  const idsToUse = (team_ids && team_ids.length) ? team_ids : await getAllTeamIds();
   const results = { ok: true, seasons: [] };
   for (const s of seasons) {
     console.log(`🔁 syncTeamSeasonStats season=${s}`);
     let cursor = null; let page = 0; let total = 0;
     while (true) {
       if (page >= maxPages) { console.log(`Reached maxPages (${maxPages}) for team season ${s}`); break; }
-      const params = { season: s, per_page }; if (team_ids && team_ids.length) params.team_ids = team_ids; if (cursor) params.cursor = cursor;
+      const params = { season: s, per_page };
+      // Always supply team_ids to satisfy API requirement
+      params.team_ids = idsToUse;
+      if (cursor) params.cursor = cursor;
       const payload = await bdl.listTeamSeasonStats(params);
-      const data = (payload && payload.data) ? payload.data : payload || []; const meta = (payload && payload.meta) ? payload.meta : {};
+      const data = (payload && payload.data) ? payload.data : payload || [];
+      const meta = (payload && payload.meta) ? payload.meta : {};
       if (!Array.isArray(data) || data.length === 0) break;
       if (!dryRun) {
         const ops = data.map(d => {
@@ -305,7 +336,8 @@ async function syncTeamStats({ per_page = 100, seasons = null, team_ids = [], ga
     if (seasonsArr && seasonsArr.length) params.seasons = seasonsArr;
     if (cursor) params.cursor = cursor;
     const payload = await bdl.listTeamStats(params);
-    const data = (payload && payload.data) ? payload.data : payload || []; const meta = (payload && payload.meta) ? payload.meta : {};
+    const data = (payload && payload.data) ? payload.data : payload || [];
+    const meta = (payload && payload.meta) ? payload.meta : {};
     if (!Array.isArray(data) || data.length === 0) break;
     console.log(`   Received ${data.length} teamStats rows`);
     if (!dryRun) {
@@ -350,18 +382,39 @@ async function syncAdvancedStatsEndpoint(type = 'rushing', { season = null, per_
       const params = { per_page, season: s };
       if (cursor) params.cursor = cursor;
       const payload = await fn(params);
-      const data = (payload && payload.data) ? payload.data : payload || []; const meta = (payload && payload.meta) ? payload.meta : {};
+      const data = (payload && payload.data) ? payload.data : payload || [];
+      const meta = (payload && payload.meta) ? payload.meta : {};
       if (!Array.isArray(data) || data.length === 0) break;
       console.log(`   Received ${data.length} advanced ${type} rows`);
       if (!dryRun) {
         const ops = data.map(d => {
+          // Determine the entity type (player or team) and IDs from the response
           const entityType = d.player ? 'player' : 'team';
           const entityId = (d.player && d.player.id) || (d.team && d.team.id) || null;
+          // Build a stable key for internal reference
           const key = `advanced:${type}:season:${s}:${entityType}:${entityId}`;
-          const filter = { key };
-          const update = { key, entityType, entityId, season: s, scope: 'season', metrics: d, sources: { bdl: d }, raw: d };
+          /*
+           * Upsert using a filter that matches the unique index on entityType, entityId, season, scope, and type.
+           * Including the "type" field in the filter ensures we don't violate the unique index on
+           * entityType + entityId + season + scope (when combined with type).
+           */
+          const filter = { entityType, entityId, season: s, scope: 'season', type };
+          // Each advanced stat type will be stored as its own document. Store both the key and type for clarity.
+          const update = {
+            key,
+            entityType,
+            entityId,
+            season: s,
+            scope: 'season',
+            type,
+            // Keep the raw metrics under metrics and sources.bdl
+            metrics: d,
+            sources: { bdl: d },
+            raw: d
+          };
           return { updateOne: { filter, update: { $set: update }, upsert: true } };
         });
+        // Use chunkedBulkUpsert to write the operations in batches
         await chunkedBulkUpsert(AdvancedMetric, ops);
       } else { console.log('   dryRun: not writing advanced metrics'); }
       total += data.length;
@@ -389,7 +442,8 @@ async function syncPlays({ game_id, per_page = 100, dryRun = false, maxPages = S
     const params = { per_page, game_id };
     if (cursor) params.cursor = cursor;
     const payload = await bdl.listPlays(params);
-    const data = (payload && payload.data) ? payload.data : payload || []; const meta = (payload && payload.meta) ? payload.meta : {};
+    const data = (payload && payload.data) ? payload.data : payload || [];
+    const meta = (payload && payload.meta) ? payload.meta : {};
     if (!Array.isArray(data) || data.length === 0) break;
     console.log(`   Received ${data.length} plays`);
     if (!dryRun) {
@@ -429,7 +483,8 @@ async function syncOdds({ season = null, week = null, per_page = 100, game_ids =
       const params = { per_page, game_ids };
       if (cursor) params.cursor = cursor;
       const payload = await bdl.listOdds(params);
-      const data = (payload && payload.data) ? payload.data : payload || []; const meta = (payload && payload.meta) ? payload.meta : {};
+      const data = (payload && payload.data) ? payload.data : payload || [];
+      const meta = (payload && payload.meta) ? payload.meta : {};
       if (!Array.isArray(data) || data.length === 0) break;
       console.log(`   Received ${data.length} odds rows`);
       if (!dryRun) {
@@ -459,7 +514,8 @@ async function syncOdds({ season = null, week = null, per_page = 100, game_ids =
         if (week !== null && week !== undefined) params.week = week;
         if (cursor) params.cursor = cursor;
         const payload = await bdl.listOdds(params);
-        const data = (payload && payload.data) ? payload.data : payload || []; const meta = (payload && payload.meta) ? payload.meta : {};
+        const data = (payload && payload.data) ? payload.data : payload || [];
+        const meta = (payload && payload.meta) ? payload.meta : {};
         if (!Array.isArray(data) || data.length === 0) break;
         console.log(`   Received ${data.length} odds rows for season ${s}`);
         if (!dryRun) {
@@ -533,7 +589,8 @@ async function syncInjuriesFromAPI({ per_page = 25, team_ids = [], player_ids = 
     if (player_ids && player_ids.length) params.player_ids = player_ids;
     if (cursor) params.cursor = cursor;
     const payload = await bdl.listPlayerInjuries(params);
-    const data = (payload && payload.data) ? payload.data : payload || []; const meta = (payload && payload.meta) ? payload.meta : {};
+    const data = (payload && payload.data) ? payload.data : payload || [];
+    const meta = (payload && payload.meta) ? payload.meta : {};
     if (!Array.isArray(data) || data.length === 0) break;
     console.log(`   Received ${data.length} injuries`);
     if (!dryRun) {
@@ -557,7 +614,9 @@ async function syncInjuriesFromAPI({ per_page = 25, team_ids = [], player_ids = 
   return { ok:true, pages:page, total };
 }
 
-/* ---------- computeAllDerived orchestration ---------- */
+/**
+ * computeAllDerived orchestration
+ */
 async function computeAllDerived(options = {}) {
   await ensureDbConnected();
   const season = options.season || (new Date()).getFullYear();
