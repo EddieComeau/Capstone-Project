@@ -280,28 +280,84 @@ async function syncGames({ per_page = DEFAULT_PER_PAGE, seasons = null, historic
   return { ok: true, pages: page, total };
 }
 
-async function syncStats({ per_page = DEFAULT_PER_PAGE, dryRun = false, maxPages = SYNC_MAX_PAGES, onProgress } = {}) {
+/**
+ * syncStats
+ * Options:
+ *  - per_page (default: DEFAULT_PER_PAGE)
+ *  - seasons (array or single number). If not provided, defaults to [currentYear, currentYear-1]
+ *  - dryRun (default false)
+ *  - maxPages (safety cap)
+ *  - onProgress (optional callback)
+ */
+async function syncStats({ per_page = DEFAULT_PER_PAGE, seasons = null, dryRun = false, maxPages = SYNC_MAX_PAGES, onProgress } = {}) {
   await ensureDbConnected();
+
+  // If seasons not provided, default to current + previous
+  if (!seasons) {
+    const currentYear = (new Date()).getFullYear();
+    seasons = [currentYear, currentYear - 1];
+  } else if (!Array.isArray(seasons)) {
+    seasons = [Number(seasons)];
+  }
+
   console.log('🔁 syncStats starting...');
-  let cursor = null, page = 0, total = 0;
+  console.log('   seasons filter:', seasons);
+
+  let cursor = null;
+  let page = 0;
+  let total = 0;
+  const model = Stat;
+
   while (true) {
-    if (page >= maxPages) break;
+    if (page >= maxPages) {
+      console.log(`Reached maxPages (${maxPages}), stopping syncStats.`);
+      break;
+    }
+
     const params = { per_page };
+    // attach seasons filter for the API
+    if (seasons && seasons.length) params.seasons = seasons;
     if (cursor) params.cursor = cursor;
+
     console.log(`📄 Fetching stats page ${page + 1} params: ${JSON.stringify(params)}`);
     const payload = await bdl.listStats(params);
     const data = (payload && payload.data) ? payload.data : payload || [];
     const meta = (payload && payload.meta) ? payload.meta : {};
-    if (!Array.isArray(data) || data.length === 0) break;
+
+    if (!Array.isArray(data) || data.length === 0) {
+      console.log('   No stats returned, finishing.');
+      break;
+    }
+
     console.log(`   Received ${data.length} stats rows`);
-    callProgress({ onProgress }, { model: 'stats', page, count: data.length });
+    if (typeof onProgress === 'function') {
+      try { onProgress({ model: 'stats', page, count: data.length }); } catch (e) {}
+    }
+
     if (!dryRun) {
       const ops = data.map(s => {
         const statId = s.id || `${s.game_id || s.game?.id}_${s.player_id || s.player?.id}_${s.team_id || s.team?.id}`;
-        return { updateOne: { filter: { statId }, update: { $set: { statId, gameId: s.game_id || (s.game && s.game.id), playerId: s.player_id || (s.player && s.player.id), teamId: s.team_id || (s.team && s.team.id), season: s.season || null, stats: s, raw: s } }, upsert: true } };
+        const filter = { statId };
+        const update = {
+          statId,
+          gameId: s.game_id || (s.game && s.game.id),
+          playerId: s.player_id || (s.player && s.player.id),
+          teamId: s.team_id || (s.team && s.team.id),
+          season: s.season || null,
+          stats: s,
+          raw: s
+        };
+        return {
+          updateOne: {
+            filter,
+            update: { $set: update },
+            upsert: true
+          }
+        };
       });
+
       try {
-        await chunkedBulkUpsert(Stat, ops);
+        await chunkedBulkUpsert(model, ops);
         total += data.length;
       } catch (err) {
         console.error('❌ bulkWrite failed for model Stat:', err && err.message ? err.message : err);
@@ -311,16 +367,25 @@ async function syncStats({ per_page = DEFAULT_PER_PAGE, dryRun = false, maxPages
       total += data.length;
       console.log('   dryRun: not writing stats');
     }
+
     const nextCursor = (meta && (meta.next_cursor || meta.nextCursor)) || null;
-    callProgress({ onProgress }, { model: 'stats', page, nextCursor });
+    console.log(`   Next cursor: ${nextCursor}`);
+    if (typeof onProgress === 'function') {
+      try { onProgress({ model: 'stats', page, nextCursor }); } catch (e) {}
+    }
     const guard = guardCursorProgress(cursor, nextCursor);
-    if (!guard.shouldContinue) break;
+    if (!guard.shouldContinue) {
+      if (guard.reason) console.log('   Stopping syncStats: ' + guard.reason);
+      break;
+    }
     cursor = nextCursor;
     page++;
   }
+
   console.log(`✅ syncStats finished. pages=${page}, total=${total}`);
   return { ok: true, pages: page, total };
 }
+
 
 module.exports = {
   syncPlayers,
