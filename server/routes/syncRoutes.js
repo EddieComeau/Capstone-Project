@@ -1,27 +1,18 @@
-const express = require("express");
-const { syncPlayers } = require("../controllers/playersController");
-
+// server/routes/syncRoutes.js
+const express = require('express');
 const router = express.Router();
+const ctrl = require('../controllers/syncController');
 
-/**
- * POST /api/sync
- * Trigger the sync process manually
- */
-router.post("/", async (req, res) => {
-  try {
-    console.log("⏳ Starting manual sync of players from Ball Don't Lie...");
-    await syncPlayers();
-    console.log("✅ Manual sync completed successfully!");
-    res.status(200).json({ message: "Players synced successfully!" });
-  } catch (error) {
-    console.error("❌ Error syncing players:", error.message);
+// POST /api/sync/games
+// body: { seasons, per_page, dryRun, historical, maxPages }
+router.post('/games', ctrl.postSyncGames);
 
-    // Provide detailed error response
-    res.status(500).json({
-      error: "Failed to sync players",
-      details: error.message,
-    });
-  }
-});
+// POST /api/sync/players
+// body: { per_page, dryRun }
+router.post('/players', ctrl.postSyncPlayers);
+
+// POST /api/sync/derived
+// body: { season, per_page, dryRun }
+router.post('/derived', ctrl.postComputeDerived);
 
 module.exports = router;

@@ -1,475 +1,523 @@
 // server/services/syncService.js
-// Centralized sync logic for players, teams, games, stats (Ball Don't Lie NFL API)
-// Uses cursor-based pagination and Mongo bulkWrite for performance
+/**
+ * Robust syncService with interactive confirmation for historical syncs.
+ *
+ * - safeBulkWrite with retries + backoff
+ * - chunkedBulkUpsert to avoid huge bulkWrite operations
+ * - ensureDbConnected so sync functions can run standalone
+ * - pagination/cursor guard
+ * - dryRun option to fetch but not write
+ * - historical:true requires interactive confirmation (or FORCE_HISTORICAL=true)
+ */
 
-const ballDontLieService = require('./ballDontLieService');
-const { ensureTeam } = require('../utils/teamUtils');
-const { bdlList } = require('../utils/apiUtils');
+require('dotenv').config();
 
+const mongoose = require('mongoose');
+const readline = require('readline');
+const bdl = require('./ballDontLieService'); // wrapper for balldontlie endpoints
 const Player = require('../models/Player');
+const Team = require('../models/Team');
 const Game = require('../models/Game');
 const Stat = require('../models/Stat');
+const SyncState = require('../models/SyncState');
 
-/**
- * Bulk batch size for Mongo bulkWrite; can be tuned with env var SYNC_BULK_BATCH_SIZE
- */
+const DEFAULT_PER_PAGE = 100;
 const BULK_BATCH_SIZE = Number(process.env.SYNC_BULK_BATCH_SIZE || 500);
+const BULKWRITE_MAX_RETRIES = Number(process.env.BULKWRITE_MAX_RETRIES || 3);
+const BULKWRITE_RETRY_BASE_MS = Number(process.env.BULKWRITE_RETRY_BASE_MS || 1000);
+const SYNC_PAGE_DELAY_MS = Number(process.env.SYNC_PAGE_DELAY_MS || 200);
+const MONGOOSE_BUFFER_TIMEOUT_MS = Number(process.env.MONGOOSE_BUFFER_TIMEOUT_MS || 30000);
+const SERVER_SELECTION_TIMEOUT_MS = Number(process.env.SERVER_SELECTION_TIMEOUT_MS || 30000);
+const SOCKET_TIMEOUT_MS = Number(process.env.SOCKET_TIMEOUT_MS || 45000);
+const MONGO_MAX_POOL_SIZE = Number(process.env.MONGO_MAX_POOL_SIZE || 20);
+const SYNC_MAX_PAGES = Number(process.env.SYNC_MAX_PAGES || 1000);
 
-/** Flush bulk ops helper */
-async function flushBulkOps(bulkOpsArr) {
-  if (!bulkOpsArr || bulkOpsArr.length === 0) return { executed: 0, result: null };
-  const ops = bulkOpsArr.splice(0, bulkOpsArr.length);
+/* ---------- DB helpers ---------- */
+
+mongoose.set('strictQuery', false);
+
+async function ensureDbConnected() {
+  const uri = process.env.MONGO_URI;
+  if (!uri) throw new Error('MONGO_URI environment variable is required');
+
+  mongoose.set('bufferTimeoutMS', MONGOOSE_BUFFER_TIMEOUT_MS);
+
+  if (mongoose.connection.readyState === 1) return;
+  if (mongoose.connection.readyState === 2) {
+    await waitForConnection(20000);
+    if (mongoose.connection.readyState !== 1) throw new Error('Mongoose did not connect in time');
+    return;
+  }
+
+  const opts = {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+    serverSelectionTimeoutMS: SERVER_SELECTION_TIMEOUT_MS,
+    socketTimeoutMS: SOCKET_TIMEOUT_MS,
+    maxPoolSize: MONGO_MAX_POOL_SIZE
+  };
+
   try {
-    const res = await Player.bulkWrite(ops, { ordered: false });
-    return { executed: ops.length, result: res };
+    await mongoose.connect(uri, opts);
+    console.log('🔌 Mongoose connected (syncService)');
   } catch (err) {
-    // If Player.bulkWrite failed (e.g., because ops are for other models), try executing against the appropriate model.
-    // But since we share flushBulkOps across models, detect which model should run them by scanning ops.
-    // Fallback: reattempt using Game or Stat if Player.bulkWrite fails due to schema issues.
-    // For simplicity, return error and executed count.
-    console.error('❌ bulkWrite failed (Player):', err && err.message ? err.message : err);
-    return { executed: ops.length, result: err };
+    console.error('❌ Mongoose connect error (syncService):', err && err.message ? err.message : err);
+    throw err;
   }
 }
 
-/**
- * Generic flush helper for a specified model (Player, Game, Stat)
- */
-async function flushBulkOpsForModel(bulkOpsArr, model) {
-  if (!bulkOpsArr || bulkOpsArr.length === 0) return { executed: 0, result: null };
-  const ops = bulkOpsArr.splice(0, bulkOpsArr.length);
-  try {
-    const res = await model.bulkWrite(ops, { ordered: false });
-    return { executed: ops.length, result: res };
-  } catch (err) {
-    console.error(`❌ bulkWrite failed for model ${model.modelName}:`, err && err.message ? err.message : err);
-    return { executed: ops.length, result: err };
+function waitForConnection(timeoutMs = 20000) {
+  return new Promise((resolve, reject) => {
+    const start = Date.now();
+    (function check() {
+      if (mongoose.connection.readyState === 1) return resolve();
+      if (Date.now() - start > timeoutMs) return reject(new Error('Timed out waiting for mongoose connection'));
+      setTimeout(check, 200);
+    })();
+  });
+}
+
+/* ---------- Utility helpers ---------- */
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function safeBulkWrite(model, ops, options = { ordered: false, w: 1, wtimeout: 30000 }) {
+  if (!ops || ops.length === 0) return;
+  let lastErr = null;
+  for (let attempt = 1; attempt <= BULKWRITE_MAX_RETRIES; attempt++) {
+    try {
+      if (mongoose.connection.readyState !== 1) {
+        await ensureDbConnected();
+      }
+      await model.bulkWrite(ops, options);
+      return;
+    } catch (err) {
+      lastErr = err;
+      console.warn(`bulkWrite attempt ${attempt} failed for model ${model.modelName}:`, err && err.message ? err.message : err);
+      if (attempt < BULKWRITE_MAX_RETRIES) {
+        const delay = BULKWRITE_RETRY_BASE_MS * attempt;
+        console.log(`retrying bulkWrite in ${delay}ms`);
+        await sleep(delay);
+      }
+    }
+  }
+  throw lastErr;
+}
+
+async function chunkedBulkUpsert(model, ops) {
+  while (ops.length > 0) {
+    const slice = ops.splice(0, BULK_BATCH_SIZE);
+    await safeBulkWrite(model, slice, { ordered: false, w: 1, wtimeout: 30000 });
+    await sleep(SYNC_PAGE_DELAY_MS);
   }
 }
 
-/* -------------------------------------------------------------------------- */
-/*                             Player sync functions                          */
-/* -------------------------------------------------------------------------- */
+function guardCursorProgress(prevCursor, nextCursor) {
+  if (!nextCursor && nextCursor !== 0) return { shouldContinue: false };
+  if (String(nextCursor) === String(prevCursor)) return { shouldContinue: false, reason: 'cursor did not advance' };
+  return { shouldContinue: true };
+}
+
+/* ---------- Interactive helper ---------- */
+
+function askYesNo(question, timeout = 60000) {
+  // returns Promise<boolean>
+  return new Promise((resolve, reject) => {
+    if (!process.stdin.isTTY) {
+      // not interactive
+      return resolve(false);
+    }
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+    let answered = false;
+    const timer = setTimeout(() => {
+      if (!answered) {
+        rl.close();
+        return resolve(false);
+      }
+    }, timeout);
+    rl.question(question + ' (type YES to confirm): ', (answer) => {
+      answered = true;
+      clearTimeout(timer);
+      rl.close();
+      const ok = String(answer || '').trim().toUpperCase() === 'YES';
+      resolve(ok);
+    });
+  });
+}
+
+/* ---------- Sync implementations ---------- */
 
 /**
- * Sync players across the whole BDL players endpoint (no team filter).
- * options: { per_page, cursor, maxPages }
- * Returns { ok, fetched, upsertCount, pages, next_cursor }
+ * syncPlayers - sync all players (cursor-based), upserts into Player model.
+ * options: { per_page, dryRun, maxPages }
  */
-async function syncPlayers(options = {}, { PlayerModel } = {}) {
-  const PlayerToUse = PlayerModel || Player;
-  const per_page = Number(options.per_page || 100);
-  let cursor = options.cursor || null;
-  let fetched = 0;
-  let upsertCount = 0;
-  const maxPages = Number(options.maxPages || 1000);
-  let pageCount = 0;
-  let previousCursor = null;
+async function syncPlayers({ per_page = DEFAULT_PER_PAGE, dryRun = false, maxPages = SYNC_MAX_PAGES } = {}) {
+  await ensureDbConnected();
+  console.log('🔁 syncPlayers starting...');
+  let cursor = null;
+  let page = 0;
+  let total = 0;
 
-  console.log('🔁 syncPlayers (ALL TEAMS) starting...');
-
-  while (pageCount < maxPages) {
-    pageCount += 1;
+  while (true) {
+    if (page >= maxPages) {
+      console.log(`Reached maxPages (${maxPages}), stopping syncPlayers.`);
+      break;
+    }
     const params = { per_page };
     if (cursor) params.cursor = cursor;
+    console.log(`📄 Fetching players page ${page + 1} params: ${JSON.stringify(params)}`);
+    const payload = await bdl.listPlayers(params);
+    const data = (payload && payload.data) ? payload.data : payload || [];
+    const meta = (payload && payload.meta) ? payload.meta : {};
 
-    console.log(`📄 Fetching player page ${pageCount} params:`, JSON.stringify(params));
-    // use service helper
-    const payload = await ballDontLieService.listPlayers(params);
-    const players = payload && payload.data ? payload.data : (Array.isArray(payload) ? payload : []);
-    const meta = payload && payload.meta ? payload.meta : {};
-
-    fetched += players.length;
-    console.log(`   Received ${players.length} players`);
-
-    if (cursor && cursor === previousCursor) {
-      console.warn('⚠️ Cursor did not advance; aborting to avoid infinite loop');
+    if (!Array.isArray(data) || data.length === 0) {
+      console.log('   No players returned, finishing.');
       break;
     }
+    console.log(`   Received ${data.length} players`);
 
-    // Bulk ops for Player model
-    const bulkOps = [];
-    for (const p of players) {
-      if (!p || !p.id) {
-        console.warn('⚠️ Skipping invalid player record', p);
-        continue;
-      }
-
-      const update = {
-        PlayerID: p.id,
-        bdlId: p.id,
-        first_name: p.first_name || 'Unknown',
-        last_name: p.last_name || 'Unknown',
-        full_name: p.full_name || `${p.first_name || ''} ${p.last_name || ''}`.trim(),
-        position: p.position || '',
-        team: p.team || null,
-        raw: p,
-        updatedAt: new Date(),
-      };
-
-      bulkOps.push({
-        updateOne: {
-          filter: { bdlId: p.id },
-          update: { $set: update, $setOnInsert: { createdAt: new Date() } },
-          upsert: true,
-        }
+    if (!dryRun) {
+      const ops = data.map(p => {
+        const bdlId = p.id || p.bdlId || p.player_id;
+        const filter = { bdlId };
+        const update = {
+          bdlId,
+          PlayerID: p.id || null,
+          first_name: p.first_name,
+          last_name: p.last_name,
+          position: p.position,
+          team: p.team || null,
+          raw: p
+        };
+        return { updateOne: { filter, update: { $set: update }, upsert: true } };
       });
 
-      if (bulkOps.length >= BULK_BATCH_SIZE) {
-        const { executed } = await flushBulkOpsForModel(bulkOps, PlayerToUse);
-        upsertCount += executed;
+      try {
+        await chunkedBulkUpsert(Player, ops);
+        total += data.length;
+      } catch (err) {
+        console.error('❌ bulkWrite failed for model Player:', err && err.message ? err.message : err);
+        throw err;
       }
+    } else {
+      total += data.length;
+      console.log('   dryRun: not writing players');
     }
 
-    if (bulkOps.length > 0) {
-      const { executed } = await flushBulkOpsForModel(bulkOps, PlayerToUse);
-      upsertCount += executed;
-    }
-
-    const nextCursor = meta.next_cursor || meta.nextCursor || null;
-    console.log(`   Next cursor: ${nextCursor || 'null (last page)'}`);
-
-    if (!nextCursor || players.length === 0) {
-      cursor = nextCursor;
+    const nextCursor = (meta && (meta.next_cursor || meta.nextCursor)) || null;
+    console.log(`   Next cursor: ${nextCursor}`);
+    const guard = guardCursorProgress(cursor, nextCursor);
+    if (!guard.shouldContinue) {
+      if (guard.reason) console.log('   Stopping syncPlayers: ' + guard.reason);
       break;
     }
-
-    previousCursor = cursor;
     cursor = nextCursor;
+    page++;
   }
 
-  console.log(`✅ syncPlayers complete — fetched: ${fetched}, upserted (approx): ${upsertCount}, pages: ${pageCount}`);
-  return { ok: true, fetched, upsertCount, pages: pageCount, next_cursor: cursor };
+  console.log(`✅ syncPlayers finished. pages=${page}, total=${total}`);
+  return { ok: true, pages: page, total };
 }
 
 /**
- * Sync players for single team (filters by team_ids).
- * Returns { upsertCount, next_cursor }
+ * syncTeamPlayers(teamFilter, options)
+ * teamFilter: team abbreviation (e.g., 'KC') or team id
  */
-async function syncTeamPlayers(teamAbbrev) {
-  console.log(`🔁 syncTeamPlayers starting for ${teamAbbrev}...`);
-  const { teamDoc, raw } = await ensureTeam(teamAbbrev);
-  const teamId = raw && raw.id ? raw.id : null;
-  if (!teamId) throw new Error(`Cannot determine BallDontLie team id for ${teamAbbrev}`);
+async function syncTeamPlayers(teamFilter, { per_page = DEFAULT_PER_PAGE, dryRun = false, maxPages = SYNC_MAX_PAGES } = {}) {
+  await ensureDbConnected();
+  console.log(`🔁 syncTeamPlayers starting for filter: ${teamFilter}`);
 
-  console.log(`Using BDL team id ${teamId} for ${teamAbbrev}`);
+  let team_ids = [];
+  if (teamFilter) {
+    const n = Number(teamFilter);
+    if (!Number.isNaN(n) && n > 0) team_ids = [n];
+    else {
+      const t = await Team.findOne({ abbreviation: teamFilter }).lean();
+      if (t && t.bdlId) team_ids = [t.bdlId];
+    }
+  }
+  if (!team_ids.length) {
+    console.log('No team_ids resolved; falling back to syncPlayers (all).');
+    return syncPlayers({ per_page, dryRun, maxPages });
+  }
 
-  let upsertCount = 0;
   let cursor = null;
-  let pageCount = 0;
-  const maxPages = Number(process.env.SYNC_MAX_PAGES || 1000);
-  let previousCursor = null;
+  let page = 0;
+  let total = 0;
 
-  while (pageCount < maxPages) {
-    pageCount++;
-    const params = { per_page: 100, team_ids: [teamId] };
-    if (cursor) params.cursor = cursor;
-
-    console.log(`📄 Fetching team ${teamAbbrev} page ${pageCount} params:`, JSON.stringify(params));
-    const payload = await ballDontLieService.listPlayers(params);
-    const players = payload && payload.data ? payload.data : [];
-    const meta = payload && payload.meta ? payload.meta : {};
-
-    console.log(`   Received ${players.length} players for ${teamAbbrev}`);
-
-    if (cursor && cursor === previousCursor) {
-      console.warn('⚠️ Cursor did not advance; aborting.');
+  while (true) {
+    if (page >= maxPages) {
+      console.log(`Reached maxPages (${maxPages}), stopping syncTeamPlayers.`);
       break;
     }
+    const params = { per_page, team_ids };
+    if (cursor) params.cursor = cursor;
+    console.log(`📄 Fetching team players page ${page + 1} params: ${JSON.stringify(params)}`);
+    const payload = await bdl.listPlayers(params);
+    const data = (payload && payload.data) ? payload.data : payload || [];
+    const meta = (payload && payload.meta) ? payload.meta : {};
 
-    const bulkOps = [];
-    for (const p of players) {
-      if (!p || !p.id) continue;
-      const update = {
-        PlayerID: p.id,
-        bdlId: p.id,
-        first_name: p.first_name || 'Unknown',
-        last_name: p.last_name || 'Unknown',
-        full_name: p.full_name || `${p.first_name || ''} ${p.last_name || ''}`.trim(),
-        position: p.position || '',
-        team: p.team || null,
-        raw: p,
-        updatedAt: new Date(),
-      };
+    if (!Array.isArray(data) || data.length === 0) break;
+    console.log(`   Received ${data.length} players`);
 
-      bulkOps.push({
-        updateOne: {
-          filter: { bdlId: p.id },
-          update: { $set: update, $setOnInsert: { createdAt: new Date() } },
-          upsert: true,
-        }
+    if (!dryRun) {
+      const ops = data.map(p => {
+        const bdlId = p.id || p.bdlId || p.player_id;
+        const filter = { bdlId };
+        const update = {
+          bdlId,
+          PlayerID: p.id || null,
+          first_name: p.first_name,
+          last_name: p.last_name,
+          position: p.position,
+          team: p.team || null,
+          raw: p
+        };
+        return { updateOne: { filter, update: { $set: update }, upsert: true } };
       });
 
-      if (bulkOps.length >= BULK_BATCH_SIZE) {
-        const { executed } = await flushBulkOpsForModel(bulkOps, Player);
-        upsertCount += executed;
+      try {
+        await chunkedBulkUpsert(Player, ops);
+        total += data.length;
+      } catch (err) {
+        console.error('❌ bulkWrite failed for model Player:', err && err.message ? err.message : err);
+        throw err;
       }
+    } else {
+      total += data.length;
+      console.log('   dryRun: not writing team players');
     }
 
-    if (bulkOps.length > 0) {
-      const { executed } = await flushBulkOpsForModel(bulkOps, Player);
-      upsertCount += executed;
-    }
-
-    const nextCursor = meta.next_cursor || meta.nextCursor || null;
-    console.log(`   Next cursor: ${nextCursor || 'null (last page)'}`);
-
-    if (!nextCursor || players.length === 0) {
-      cursor = nextCursor;
+    const nextCursor = (meta && (meta.next_cursor || meta.nextCursor)) || null;
+    console.log(`   Next cursor: ${nextCursor}`);
+    const guard = guardCursorProgress(cursor, nextCursor);
+    if (!guard.shouldContinue) {
+      if (guard.reason) console.log('   Stopping syncTeamPlayers: ' + guard.reason);
       break;
     }
-    previousCursor = cursor;
     cursor = nextCursor;
+    page++;
   }
 
-  console.log(`✅ syncTeamPlayers complete for ${teamAbbrev} — upserted (approx): ${upsertCount}, pages: ${pageCount}`);
-  return { upsertCount, next_cursor: cursor };
+  console.log(`✅ syncTeamPlayers finished. pages=${page}, total=${total}`);
+  return { ok: true, pages: page, total };
 }
 
-/* -------------------------------------------------------------------------- */
-/*                               Games & Stats sync                            */
-/* -------------------------------------------------------------------------- */
-
 /**
- * Sync games (GET /nfl/v1/games)
- * Returns { upsertCount, fetched, pages, next_cursor }
+ * syncGames
+ * options: { per_page, seasons, historical, dryRun, maxPages }
+ * - seasons: array or single number; if null and historical not true it defaults to [currentYear, currentYear-1]
+ * - historical: if true, will attempt to sync all historical games (requires explicit confirmation or FORCE_HISTORICAL=true)
  */
-async function syncGames(options = {}) {
-  const per_page = Number(options.per_page || 100);
-  let cursor = options.cursor || null;
-  let fetched = 0;
-  let upsertCount = 0;
-  const maxPages = Number(options.maxPages || 1000);
-  let pageCount = 0;
-  let previousCursor = null;
+async function syncGames({ per_page = DEFAULT_PER_PAGE, seasons = null, historical = false, dryRun = false, maxPages = SYNC_MAX_PAGES } = {}) {
+  await ensureDbConnected();
+
+  // If historical requested, require confirmation unless FORCE_HISTORICAL env var is true
+  if (historical) {
+    const force = String(process.env.FORCE_HISTORICAL || '').toLowerCase() === 'true';
+    if (!force) {
+      if (!process.stdin.isTTY) {
+        throw new Error('Historical sync requires interactive terminal or set FORCE_HISTORICAL=true');
+      }
+      console.log('⚠️  You requested a FULL historical sync (this may fetch many pages and a lot of data).');
+      const ok = await askYesNo('Proceed with full historical sync? This may be slow and large.');
+      if (!ok) {
+        console.log('Historical sync aborted by user.');
+        return { ok: false, aborted: true };
+      }
+    } else {
+      console.log('FORCE_HISTORICAL=true detected; proceeding with historical sync without interactive prompt.');
+    }
+  }
+
+  // If seasons not provided and historical not set, default to last 2 seasons
+  if (!historical) {
+    if (!seasons) {
+      const currentYear = (new Date()).getFullYear();
+      seasons = [currentYear, currentYear - 1];
+    } else if (!Array.isArray(seasons)) {
+      seasons = [Number(seasons)];
+    }
+  } else {
+    // historical scan: do not set seasons so API returns all pages
+    seasons = null;
+  }
 
   console.log('🔁 syncGames starting...');
+  console.log('   seasons filter:', seasons, 'historical:', historical);
 
-  while (pageCount < maxPages) {
-    pageCount++;
-    const params = { per_page };
-    if (cursor) params.cursor = cursor;
+  let cursor = null;
+  let page = 0;
+  let total = 0;
 
-    console.log(`📄 Fetching games page ${pageCount} params:`, JSON.stringify(params));
-    const response = await ballDontLieService.listGames(params);
-    const games = response && response.data ? response.data : [];
-    const meta = response && response.meta ? response.meta : {};
-
-    fetched += games.length;
-    console.log(`   Received ${games.length} games`);
-
-    if (cursor && cursor === previousCursor) {
-      console.warn('⚠️ Cursor did not advance; aborting.');
+  while (true) {
+    if (page >= maxPages && !historical) {
+      console.log(`Reached maxPages (${maxPages}), stopping syncGames.`);
       break;
     }
+    const params = { per_page };
+    if (seasons && seasons.length) params.seasons = seasons;
+    if (cursor) params.cursor = cursor;
+    console.log(`📄 Fetching games page ${page + 1} params: ${JSON.stringify(params)}`);
+    const payload = await bdl.listGames(params);
+    const data = (payload && payload.data) ? payload.data : payload || [];
+    const meta = (payload && payload.meta) ? payload.meta : {};
 
-    const bulkOps = [];
-    for (const g of games) {
-      if (!g || !g.id) continue;
-      const update = {
-        gameId: g.id,
-        date: g.date ? new Date(g.date) : null,
-        season: g.season || null,
-        week: g.week || null,
-        status: g.status || null,
-        home_team: g.home_team || null,
-        visitor_team: g.visitor_team || null,
-        score: g.score || null,
-        raw: g,
-        updatedAt: new Date(),
-      };
+    if (!Array.isArray(data) || data.length === 0) {
+      console.log('   No games returned, finishing.');
+      break;
+    }
+    console.log(`   Received ${data.length} games`);
 
-      bulkOps.push({
-        updateOne: {
-          filter: { gameId: g.id },
-          update: { $set: update, $setOnInsert: { createdAt: new Date() } },
-          upsert: true,
-        }
+    if (!dryRun) {
+      const ops = data.map(g => {
+        const gameId = g.id || g.game_id || (g.raw && g.raw.id) || null;
+        const filter = { gameId };
+        const update = {
+          gameId,
+          date: g.date || g.game_date || null,
+          season: g.season || null,
+          week: g.week || null,
+          home_team: g.home_team || null,
+          visitor_team: g.visitor_team || null,
+          home_score: g.home_score != null ? g.home_score : (g.home && g.home.score),
+          visitor_score: g.visitor_score != null ? g.visitor_score : (g.visitor && g.visitor.score),
+          status: g.status || g.boxscore,
+          raw: g
+        };
+        return { updateOne: { filter, update: { $set: update }, upsert: true } };
       });
 
-      if (bulkOps.length >= BULK_BATCH_SIZE) {
-        const { executed } = await flushBulkOpsForModel(bulkOps, Game);
-        upsertCount += executed;
+      try {
+        await chunkedBulkUpsert(Game, ops);
+        total += data.length;
+      } catch (err) {
+        console.error('❌ bulkWrite failed for model Game:', err && err.message ? err.message : err);
+        throw err;
       }
+    } else {
+      total += data.length;
+      console.log('   dryRun: not writing games');
     }
 
-    if (bulkOps.length > 0) {
-      const { executed } = await flushBulkOpsForModel(bulkOps, Game);
-      upsertCount += executed;
-    }
-
-    const nextCursor = meta.next_cursor || meta.nextCursor || null;
-    console.log(`   Next cursor: ${nextCursor || 'null (last page)'}`);
-
-    if (!nextCursor || games.length === 0) {
-      cursor = nextCursor;
+    const nextCursor = (meta && (meta.next_cursor || meta.nextCursor)) || null;
+    console.log(`   Next cursor: ${nextCursor}`);
+    const guard = guardCursorProgress(cursor, nextCursor);
+    if (!guard.shouldContinue) {
+      if (guard.reason) console.log('   Stopping syncGames: ' + guard.reason);
       break;
     }
-
-    previousCursor = cursor;
     cursor = nextCursor;
+    page++;
+    // If not historical and reached maxPages, stop (already above)
   }
 
-  console.log(`✅ syncGames complete — fetched: ${fetched}, upserted (approx): ${upsertCount}, pages: ${pageCount}`);
-  return { upsertCount, fetched, pages: pageCount, next_cursor: cursor };
+  console.log(`✅ syncGames finished. pages=${page}, total=${total}`);
+  return { ok: true, pages: page, total };
 }
 
 /**
- * Sync stats (GET /nfl/v1/stats)
- * Upserts stat records keyed by statId if present, otherwise by (gameId + playerId)
- * Returns { upsertCount, fetched, pages, next_cursor }
+ * syncStats
  */
-async function syncStats(options = {}) {
-  const per_page = Number(options.per_page || 100);
-  let cursor = options.cursor || null;
-  let fetched = 0;
-  let upsertCount = 0;
-  const maxPages = Number(options.maxPages || 1000);
-  let pageCount = 0;
-  let previousCursor = null;
+async function syncStats({ per_page = DEFAULT_PER_PAGE, dryRun = false, maxPages = SYNC_MAX_PAGES } = {}) {
+  await ensureDbConnected();
 
   console.log('🔁 syncStats starting...');
+  let cursor = null;
+  let page = 0;
+  let total = 0;
 
-  while (pageCount < maxPages) {
-    pageCount++;
+  while (true) {
+    if (page >= maxPages) {
+      console.log(`Reached maxPages (${maxPages}), stopping syncStats.`);
+      break;
+    }
     const params = { per_page };
     if (cursor) params.cursor = cursor;
+    console.log(`📄 Fetching stats page ${page + 1} params: ${JSON.stringify(params)}`);
+    const payload = await bdl.listStats(params);
+    const data = (payload && payload.data) ? payload.data : payload || [];
+    const meta = (payload && payload.meta) ? payload.meta : {};
 
-    console.log(`📄 Fetching stats page ${pageCount} params:`, JSON.stringify(params));
-    const response = await ballDontLieService.listStats(params);
-    const stats = response && response.data ? response.data : [];
-    const meta = response && response.meta ? response.meta : {};
-
-    fetched += stats.length;
-    console.log(`   Received ${stats.length} stat records`);
-
-    if (cursor && cursor === previousCursor) {
-      console.warn('⚠️ Cursor did not advance; aborting.');
+    if (!Array.isArray(data) || data.length === 0) {
+      console.log('   No stats returned, finishing.');
       break;
     }
+    console.log(`   Received ${data.length} stats rows`);
 
-    const bulkOps = [];
-    for (const s of stats) {
-      if (!s) continue;
-      const statId = s.id || null;
-      const gameId = s.game_id || (s.game && s.game.id) || null;
-      const playerId = s.player_id || (s.player && s.player.id) || null;
-      const teamId = s.team_id || (s.team && s.team.id) || null;
-
-      const update = {
-        statId,
-        gameId,
-        playerId,
-        teamId,
-        season: s.season || null,
-        week: s.week || null,
-        stats: s.stats || s || {},
-        raw: s,
-        updatedAt: new Date(),
-      };
-
-      // choose filter: statId if present, else composite gameId+playerId
-      let filter;
-      if (statId) filter = { statId };
-      else if (gameId && playerId) filter = { gameId, playerId };
-      else {
-        // no unique key — skip to avoid duplicates
-        console.warn('⚠️ Skipping stat record without statId or (gameId+playerId):', s);
-        continue;
-      }
-
-      bulkOps.push({
-        updateOne: {
-          filter,
-          update: { $set: update, $setOnInsert: { createdAt: new Date() } },
-          upsert: true,
-        }
+    if (!dryRun) {
+      const ops = data.map(s => {
+        const statId = s.id || `${s.game_id || s.game?.id}_${s.player_id || s.player?.id}_${s.team_id || s.team?.id}`;
+        const filter = { statId };
+        const update = {
+          statId,
+          gameId: s.game_id || (s.game && s.game.id),
+          playerId: s.player_id || (s.player && s.player.id),
+          teamId: s.team_id || (s.team && s.team.id),
+          season: s.season || null,
+          stats: s,
+          raw: s
+        };
+        return { updateOne: { filter, update: { $set: update }, upsert: true } };
       });
 
-      if (bulkOps.length >= BULK_BATCH_SIZE) {
-        const { executed } = await flushBulkOpsForModel(bulkOps, Stat);
-        upsertCount += executed;
+      try {
+        await chunkedBulkUpsert(Stat, ops);
+        total += data.length;
+      } catch (err) {
+        console.error('❌ bulkWrite failed for model Stat:', err && err.message ? err.message : err);
+        throw err;
       }
+    } else {
+      total += data.length;
+      console.log('   dryRun: not writing stats');
     }
 
-    if (bulkOps.length > 0) {
-      const { executed } = await flushBulkOpsForModel(bulkOps, Stat);
-      upsertCount += executed;
-    }
-
-    const nextCursor = meta.next_cursor || meta.nextCursor || null;
-    console.log(`   Next cursor: ${nextCursor || 'null (last page)'}`);
-
-    if (!nextCursor || stats.length === 0) {
-      cursor = nextCursor;
+    const nextCursor = (meta && (meta.next_cursor || meta.nextCursor)) || null;
+    console.log(`   Next cursor: ${nextCursor}`);
+    const guard = guardCursorProgress(cursor, nextCursor);
+    if (!guard.shouldContinue) {
+      if (guard.reason) console.log('   Stopping syncStats: ' + guard.reason);
       break;
     }
-
-    previousCursor = cursor;
     cursor = nextCursor;
+    page++;
   }
 
-  console.log(`✅ syncStats complete — fetched: ${fetched}, upserted (approx): ${upsertCount}, pages: ${pageCount}`);
-  return { upsertCount, fetched, pages: pageCount, next_cursor: cursor };
-}
-
-/* -------------------------------------------------------------------------- */
-/*                        Weekly / multi-team helpers                         */
-/* -------------------------------------------------------------------------- */
-
-/**
- * Sync weekly data for a single team (currently delegates to syncTeamPlayers)
- */
-async function syncWeeklyForTeam(season, week, teamAbbrev) {
-  console.log(`🔁 syncWeeklyForTeam: ${teamAbbrev} season ${season} week ${week}`);
-  const res = await syncTeamPlayers(teamAbbrev);
-  return { season, week, teamAbbrev, syncedPlayers: res.upsertCount, next_cursor: res.next_cursor };
+  console.log(`✅ syncStats finished. pages=${page}, total=${total}`);
+  return { ok: true, pages: page, total };
 }
 
 /**
- * Sync multiple teams for a week with optional concurrency (sequential by default)
+ * syncAllTeamsPlayers - iterate all teams and sync players per team abbreviation
  */
-async function syncAllTeamsForWeek(season, week, options = {}) {
-  console.log(`🔁 syncAllTeamsForWeek: season ${season} week ${week}`);
-  const concurrency = options.concurrency || 2;
+async function syncAllTeamsPlayers({ per_page = DEFAULT_PER_PAGE, dryRun = false } = {}) {
+  await ensureDbConnected();
 
-  const teams = [
-    "ARI","ATL","BAL","BUF","CAR","CHI","CIN","CLE",
-    "DAL","DEN","DET","GB","HOU","IND","JAX","KC",
-    "LAC","LAR","LV","MIA","MIN","NE","NO","NYG",
-    "NYJ","PHI","PIT","SEA","SF","TB","TEN","WAS"
-  ];
-
-  const results = [];
-  for (let i = 0; i < teams.length; i += concurrency) {
-    const batch = teams.slice(i, i + concurrency);
-    const batchResults = await Promise.all(
-      batch.map(teamAbbrev =>
-        syncWeeklyForTeam(season, week, teamAbbrev)
-          .catch(err => {
-            console.error(`❌ Error syncing team ${teamAbbrev}:`, err && err.message ? err.message : err);
-            return { season, week, teamAbbrev, error: err && err.message ? err.message : String(err) };
-          })
-      )
-    );
-    results.push(...batchResults);
+  const teams = await Team.find({}).lean();
+  if (!teams || teams.length === 0) {
+    console.log('No teams found in DB; ensure Team collection is populated');
+    return { ok: false, reason: 'no-teams' };
   }
 
-  const successCount = results.filter(r => !r.error).length;
-  const errorCount = results.filter(r => r.error).length;
-  console.log(`✅ syncAllTeamsForWeek complete: ${successCount} success, ${errorCount} errors`);
-  return { season, week, results, successCount, errorCount };
+  for (const t of teams) {
+    try {
+      const abbrev = t.abbreviation || t.code || t.abbr;
+      console.log(`\n=== Syncing players for team ${abbrev || t._id} ===`);
+      await syncTeamPlayers(abbrev || t.bdlId, { per_page, dryRun });
+    } catch (err) {
+      console.error(`Error syncing team ${t._id}:`, err && err.message ? err.message : err);
+    }
+  }
+  return { ok: true, teamsCount: teams.length };
 }
-
-/* -------------------------------------------------------------------------- */
-/*                                    Exports                                  */
-/* -------------------------------------------------------------------------- */
 
 module.exports = {
   syncPlayers,
   syncTeamPlayers,
+  syncAllTeamsPlayers,
   syncGames,
-  syncStats,
-  syncWeeklyForTeam,
-  syncAllTeamsForWeek,
+  syncStats
 };
