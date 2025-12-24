@@ -189,6 +189,61 @@ async function syncTeamPlayers(teamAbbrev) {
   return { upsertCount, next_cursor: cursor };
 }
 
+/**
+ * Sync all NFL teams using the Ball Don't Lie NFL /teams endpoint.
+ * This function fetches every team (optionally filtered by division or conference)
+ * and upserts them into the Team collection.  The API currently does not
+ * support pagination, so this call retrieves all teams in one request【622477558119146†L5603-L5620】.
+ *
+ * options: { division, conference }
+ * Returns { upsertCount, fetched }
+ */
+async function syncTeams(options = {}, { TeamModel } = {}) {
+  const TeamToUse = TeamModel || require('../models/Team');
+  const params = {};
+  if (options.division) params.division = options.division;
+  if (options.conference) params.conference = options.conference;
+  console.log('🔁 syncTeams starting...');
+  const response = await ballDontLieService.listTeams(params);
+  // The /nfl/v1/teams endpoint returns an array under data without pagination
+  const teams = response && response.data ? response.data : Array.isArray(response) ? response : [];
+  console.log(`   Received ${teams.length} teams`);
+  let upsertCount = 0;
+  const bulkOps = [];
+  for (const t of teams) {
+    if (!t || typeof t.id === 'undefined') continue;
+    // Map Ball Don't Lie fields to our Team model fields
+    const update = {
+      ballDontLieTeamId: t.id,
+      name: t.name || '',
+      abbreviation: t.abbreviation || '',
+      conference: t.conference || null,
+      division: t.division || null,
+      city: t.city || t.location || null,
+      fullName: t.full_name || null,
+      updatedAt: new Date(),
+    };
+    bulkOps.push({
+      updateOne: {
+        filter: { ballDontLieTeamId: t.id },
+        update: { $set: update, $setOnInsert: { createdAt: new Date() } },
+        upsert: true,
+      },
+    });
+    // Flush in batches if needed
+    if (bulkOps.length >= BULK_BATCH_SIZE) {
+      const { executed } = await flushBulkOpsForModel(bulkOps, TeamToUse);
+      upsertCount += executed;
+    }
+  }
+  if (bulkOps.length > 0) {
+    const { executed } = await flushBulkOpsForModel(bulkOps, TeamToUse);
+    upsertCount += executed;
+  }
+  console.log(`✅ syncTeams complete — upserted (approx): ${upsertCount}`);
+  return { upsertCount, fetched: teams.length };
+}
+
 /* -------------------------------------------------------------------------- */
 /*                               Games & Stats sync                            */
 /* -------------------------------------------------------------------------- */
@@ -401,4 +456,5 @@ module.exports = {
   syncStats,
   syncWeeklyForTeam,
   syncAllTeamsForWeek,
+  syncTeams,
 };
