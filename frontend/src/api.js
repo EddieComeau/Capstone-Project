@@ -1,62 +1,142 @@
-// Updated API wrapper for the React dashboard
-// Uses the VITE_API_URL environment variable to build the base URL for API requests.
-// Provides helper functions to interact with the back‑end sync endpoints,
-// as well as alerts and webhooks APIs.
+// Unified API wrapper for the React dashboard (CRA or Vite)
+//
+// This module exposes helper functions for fetching data from the back‑end
+// and triggering long‑running sync operations. It supports both Vite (using
+// import.meta.env.VITE_API_URL) and Create‑React‑App (using
+// process.env.REACT_APP_API_BASE) to configure the API base URL. If no base
+// is set, it defaults to same‑origin ('').
 
-const API_BASE = import.meta.env.VITE_API_URL || '';
+// Resolve API base URL depending on the build environment. Vite uses
+// import.meta.env.VITE_API_URL whereas CRA uses process.env.REACT_APP_API_BASE.
+const API_BASE = (() => {
+  try {
+    // Vite exposes import.meta.env at build time. Use optional chaining in case
+    // import.meta is undefined in CRA.
+    if (typeof import !== 'undefined' && import.meta && import.meta.env && import.meta.env.VITE_API_URL) {
+      return import.meta.env.VITE_API_URL;
+    }
+  } catch (_e) {
+    // ignore if import.meta is not defined
+  }
+  // CRA exposes process.env at runtime
+  if (typeof process !== 'undefined' && process.env && process.env.REACT_APP_API_BASE) {
+    return process.env.REACT_APP_API_BASE;
+  }
+  return '';
+})();
 
+/**
+ * Generic helper for API requests. Uses fetch and automatically
+ * serialises JSON bodies and parses JSON responses when appropriate.
+ * @param {string} path relative API path (e.g., '/api/players')
+ * @param {object} options optional fetch options (method, body, headers)
+ */
 async function apiFetch(path, options = {}) {
   const url = `${API_BASE}${path.startsWith('/') ? path : `/${path}`}`;
-  const res = await fetch(url, {
+  const fetchOpts = {
+    credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
       ...(options.headers || {}),
     },
-    credentials: 'include',
     ...options,
-  });
+  };
+  // Stringify body if it's an object and not already a string
+  if (fetchOpts.body && typeof fetchOpts.body === 'object' && !(fetchOpts.body instanceof FormData)) {
+    fetchOpts.body = JSON.stringify(fetchOpts.body);
+  }
+  const res = await fetch(url, fetchOpts);
   const contentType = res.headers.get('content-type') || '';
   const isJson = contentType.includes('application/json');
   const body = isJson ? await res.json() : await res.text();
   if (!res.ok) {
-    const msg = typeof body === 'string' ? body : body?.error || 'Request failed';
-    throw new Error(msg);
+    const errMsg = isJson ? body?.error || body?.message || 'Request failed' : body;
+    throw new Error(errMsg);
   }
   return body;
 }
 
+// ----------------------- Data fetch helpers -----------------------
+
+/**
+ * Fetch a list of players. Accepts optional query parameters (e.g. { per_page: 100 }).
+ */
+export async function fetchPlayers(params = {}) {
+  // Append query parameters to the path if provided
+  const query = new URLSearchParams(params).toString();
+  return apiFetch(`/api/players${query ? '?' + query : ''}`);
+}
+
+/**
+ * Fetch a single player by ID.
+ */
+export async function fetchPlayer(playerId) {
+  if (!playerId) throw new Error('playerId is required');
+  return apiFetch(`/api/players/${playerId}`);
+}
+
+/**
+ * Fetch a list of teams.
+ */
+export async function fetchTeams() {
+  return apiFetch('/api/teams');
+}
+
+/**
+ * Fetch metrics for a given entity (player or team). Provide the entity type,
+ * its ID, and optionally a season. Example: fetchMetrics('player', 123, 2025).
+ */
+export async function fetchMetrics(entityType, entityId, season) {
+  if (!entityType || !entityId) throw new Error('entityType and entityId are required');
+  const params = {};
+  if (season) params.season = season;
+  const query = new URLSearchParams(params).toString();
+  const url = `/api/metrics/${entityType}/${entityId}${query ? '?' + query : ''}`;
+  return apiFetch(url);
+}
+
 // ----------------------- Sync helpers -----------------------
 
-// Get current sync states (jobs in progress). Returns an array of jobs.
+/**
+ * Get the current sync states (jobs in progress). Returns an array of jobs.
+ */
 export async function fetchSyncStates() {
   return apiFetch('/api/sync/states');
 }
 
-// Trigger a players sync. Accepts an options object (e.g. { per_page: 100 }).
+/**
+ * Trigger a players sync. Accepts an options object (e.g. { per_page: 100 }).
+ */
 export async function triggerSyncPlayers(opts = {}) {
   return apiFetch('/api/sync/players', {
     method: 'POST',
-    body: JSON.stringify(opts),
+    body: opts,
   });
 }
 
-// Trigger a games sync. Accepts an options object (e.g. { season: 2025 }).
+/**
+ * Trigger a games sync. Accepts an options object (e.g. { season: 2025 }).
+ */
 export async function triggerSyncGames(opts = {}) {
   return apiFetch('/api/sync/games', {
     method: 'POST',
-    body: JSON.stringify(opts),
+    body: opts,
   });
 }
 
-// Trigger the computation of all derived metrics (advanced stats, standings, matchups).
+/**
+ * Trigger the computation of all derived metrics (advanced stats, standings, matchups).
+ */
 export async function triggerComputeDerived(opts = {}) {
   return apiFetch('/api/sync/derived', {
     method: 'POST',
-    body: JSON.stringify(opts),
+    body: opts,
   });
 }
 
-// Reset the sync state (clears cursors and in‑progress flags).
+/**
+ * Reset the sync state (clears cursors and in‑progress flags).
+ */
 export async function resetSyncState() {
   return apiFetch('/api/sync/reset', {
     method: 'POST',
@@ -72,7 +152,7 @@ export async function listAlerts() {
 export async function createAlert(alert) {
   return apiFetch('/api/notifications/alerts', {
     method: 'POST',
-    body: JSON.stringify(alert),
+    body: alert,
   });
 }
 
@@ -89,7 +169,7 @@ export async function listWebhooks() {
 export async function createWebhook(webhook) {
   return apiFetch('/api/notifications/webhooks', {
     method: 'POST',
-    body: JSON.stringify(webhook),
+    body: webhook,
   });
 }
 
@@ -99,5 +179,5 @@ export async function deleteWebhook(webhookId) {
   });
 }
 
-// Export the base apiFetch function for general use
+// Export the generic apiFetch in case other parts of the app need it
 export { apiFetch };
