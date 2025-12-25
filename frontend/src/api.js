@@ -6,24 +6,13 @@
 // process.env.REACT_APP_API_BASE) to configure the API base URL. If no base
 // is set, it defaults to same‑origin ('').
 
-// Resolve API base URL depending on the build environment. Vite uses
-// import.meta.env.VITE_API_URL whereas CRA uses process.env.REACT_APP_API_BASE.
-const API_BASE = (() => {
-  try {
-    // Vite exposes import.meta.env at build time. Use optional chaining in case
-    // import.meta is undefined in CRA.
-    if (typeof import !== 'undefined' && import.meta && import.meta.env && import.meta.env.VITE_API_URL) {
-      return import.meta.env.VITE_API_URL;
-    }
-  } catch (_e) {
-    // ignore if import.meta is not defined
-  }
-  // CRA exposes process.env at runtime
-  if (typeof process !== 'undefined' && process.env && process.env.REACT_APP_API_BASE) {
-    return process.env.REACT_APP_API_BASE;
-  }
-  return '';
-})();
+// Resolve API base URL.  This file is primarily used in a Create‑React‑App
+// environment, where environment variables are exposed on process.env with a
+// REACT_APP_ prefix.  We avoid referencing the reserved `import` identifier
+// to keep Babel happy in CRA.  Set REACT_APP_API_BASE in frontend/.env to
+// point at your backend (e.g. http://localhost:4000/api).  If not set, it
+// defaults to same‑origin ('').
+const API_BASE = (typeof process !== 'undefined' && process.env && process.env.REACT_APP_API_BASE) || '';
 
 /**
  * Generic helper for API requests. Uses fetch and automatically
