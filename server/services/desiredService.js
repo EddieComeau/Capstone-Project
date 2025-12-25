@@ -171,8 +171,7 @@ async function computeAdvancedStats() {
       },
     },
   ])
-    .cursor({ batchSize: 200 })
-    .exec();
+    .cursor({ batchSize: 200 });
 
   for await (const g of playerAgg) {
     const playerId = g._id.playerId;
@@ -223,8 +222,7 @@ async function computeAdvancedStats() {
       },
     },
   ])
-    .cursor({ batchSize: 200 })
-    .exec();
+    .cursor({ batchSize: 200 });
   for await (const g of teamAgg) {
     const teamId = g._id.teamId;
     const season = g._id.season;
