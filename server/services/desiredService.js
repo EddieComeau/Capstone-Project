@@ -448,7 +448,8 @@ async function computeStandings() {
 async function computeMatchups() {
   const gamesCursor = Game.find({}).cursor();
   for await (const g of gamesCursor) {
-    const gameId = g.gameId || g.id || g._id;
+    // Determine BallDon'tLie game identifier; fallback to id or _id if needed
+    const bdlGameId = g.gameId || g.id || g._id;
     const season = g.season;
     const week = g.week;
     const homeTeamId = g.home_team && g.home_team.id;
@@ -468,11 +469,13 @@ async function computeMatchups() {
       const v = Number(visitorMetricsObj[key] || 0);
       comparison[key] = { home: h, visitor: v, diff: Number((h - v).toFixed(3)) };
     }
+    // Use ballDontLieGameId as unique identifier; set both ballDontLieGameId and gameId for compatibility
     await Matchup.updateOne(
-      { gameId },
+      { ballDontLieGameId: bdlGameId },
       {
         $set: {
-          gameId,
+          ballDontLieGameId: bdlGameId,
+          gameId: bdlGameId,
           season,
           week,
           homeTeamId,
