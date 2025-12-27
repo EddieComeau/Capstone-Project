@@ -1,99 +1,132 @@
-// server/server.js
-//
-// Main Express application entry point.  This file mirrors the upstream
-// Capstone Project `server.js` but adds the live play‑by‑play route.  It
-// wires up middleware, API routes, connects to MongoDB, and starts
-// the HTTP server.  Import your new routes here to expose them under
-// `/api/*` paths.
+// server.js (ROOT ENTRY FILE)
+// Matches package.json "main": "server.js"
 
 require('dotenv').config();
 
 const express = require('express');
-const morgan = require('morgan');
-const cors = require('cors');
 const mongoose = require('mongoose');
+const cors = require('cors');
+const morgan = require('morgan');
+const path = require('path');
 
-// Existing route modules
-const metricsRoutes = require('./routes/metricsRoutes');
+// Routes
+const metricsRoutes = require('./server/routes/metricsRoutes');
+const notificationRoutes = require('./server/routes/notificationRoutes');
+const livePlayRoutes = require('./server/routes/livePlay');
 
-// Manual sync routes (players/games/derived)
-let syncRoutes = null;
+// Optional routes (exist in your repo now, but guarded safely)
+let syncRoutes;
+let syncStateRoutes;
+
 try {
-  syncRoutes = require('./routes/syncRoutes');
-} catch (e) {
+  syncRoutes = require('./server/routes/syncRoutes');
+} catch {
   console.warn('syncRoutes not found, skipping');
 }
 
-// Sync state routes (list/reset sync jobs)
-let syncStateRoutes = null;
 try {
-  syncStateRoutes = require('./routes/syncStateRoutes');
-} catch (e) {
+  syncStateRoutes = require('./server/routes/syncStateRoutes');
+} catch {
   console.warn('syncStateRoutes not found, skipping');
 }
 
-const notificationRoutes = require('./routes/notificationRoutes');
-
-// New live play‑by‑play SSE route
-const livePlayRoutes = require('./routes/livePlay');
-
-const notificationService = require('./services/notificationService');
+// Services
+const notificationService = require('./server/services/notificationService');
 
 const app = express();
 
-app.use(cors());
+/* -------------------- Middleware -------------------- */
+
+app.use(cors()); // open CORS for local dev + prod
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan('dev'));
 
-// Health check
-app.get('/api/health', (req, res) => res.json({ ok: true, uptime: process.uptime() }));
+/* -------------------- Health -------------------- */
 
-// Mount API routes
-app.use('/api/metrics', metricsRoutes);
-if (syncRoutes) app.use('/api/sync', syncRoutes);
-  // Expose sync state listing and reset endpoints
-if (syncStateRoutes) app.use('/api/syncstate', syncStateRoutes);
-app.use('/api/notifications', notificationRoutes);
-// Expose live play by play events: GET /api/live-play/:gameId
-app.use('/api/live-play', livePlayRoutes);
-
-// Error handler
-// eslint-disable-next-line no-unused-vars
-app.use((err, req, res, next) => {
-  console.error('Unhandled error:', err && err.stack ? err.stack : err);
-  res.status(err.status || 500).json({ ok: false, error: err.message || 'internal' });
+app.get('/api/health', (req, res) => {
+  res.json({
+    ok: true,
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString(),
+  });
 });
 
-// Configuration
-const PORT = Number(process.env.PORT || 4000);
+/* -------------------- API Routes -------------------- */
+
+app.use('/api/metrics', metricsRoutes);
+app.use('/api/notifications', notificationRoutes);
+app.use('/api/live-play', livePlayRoutes);
+
+if (syncRoutes) app.use('/api/sync', syncRoutes);
+if (syncStateRoutes) app.use('/api/syncstate', syncStateRoutes);
+
+/* -------------------- Production Frontend Hosting -------------------- */
+
+if (process.env.NODE_ENV === 'production') {
+  const mainDist = path.join(__dirname, 'frontend', 'dist');
+  const adminBuild = path.join(__dirname, 'frontend', 'admin', 'build');
+
+  // Admin app at /admin
+  app.use('/admin', express.static(adminBuild));
+
+  // Main app at /
+  app.use(express.static(mainDist));
+
+  // Admin SPA fallback
+  app.get('/admin/*', (req, res) => {
+    res.sendFile(path.join(adminBuild, 'index.html'));
+  });
+
+  // Main SPA fallback (non-API)
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(mainDist, 'index.html'));
+  });
+}
+
+/* -------------------- Error Handler -------------------- */
+
+app.use((err, req, res, next) => {
+  console.error('Unhandled error:', err);
+  res.status(500).json({ ok: false, error: err.message || 'Internal error' });
+});
+
+/* -------------------- Mongo + Server Start -------------------- */
+
+const PORT = process.env.PORT || 4000;
 const MONGO_URI = process.env.MONGO_URI;
 
 if (!MONGO_URI) {
-  console.error('MONGO_URI is not set');
+  console.error('❌ MONGO_URI not set');
   process.exit(1);
 }
 
 mongoose.set('strictQuery', false);
-mongoose
-  .connect(MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true })
-  .then(async () => {
-    console.log('Connected to MongoDB:', mongoose.connection.db.databaseName);
 
-    // Start notification service watchers (change streams or polling fallback)
+mongoose
+  .connect(MONGO_URI)
+  .then(async () => {
+    console.log(`Connected to MongoDB: ${mongoose.connection.db.databaseName}`);
+
+    // Start notification listeners
     try {
       await notificationService.start();
-      console.log('Notification service started');
+      console.log('🔔 Notification service started');
     } catch (err) {
-      console.warn('Failed to start notification service', err && err.message ? err.message : err);
+      console.warn('Notification service failed to start:', err.message);
     }
 
     app.listen(PORT, () => {
-      console.log(`Server listening at http://localhost:${PORT}`);
+      console.log(`🚀 Server listening at http://localhost:${PORT}`);
+
+      if (process.env.NODE_ENV === 'production') {
+        console.log(`🟢 Main App:  http://localhost:${PORT}/`);
+        console.log(`🟣 Admin App: http://localhost:${PORT}/admin`);
+      }
     });
   })
   .catch((err) => {
-    console.error('Mongo connect failed', err && err.message ? err.message : err);
+    console.error('❌ MongoDB connection failed:', err);
     process.exit(1);
   });
 
