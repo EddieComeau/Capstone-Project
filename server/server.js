@@ -15,12 +15,23 @@ const mongoose = require('mongoose');
 
 // Existing route modules
 const metricsRoutes = require('./routes/metricsRoutes');
+
+// Manual sync routes (players/games/derived)
 let syncRoutes = null;
 try {
   syncRoutes = require('./routes/syncRoutes');
 } catch (e) {
   console.warn('syncRoutes not found, skipping');
 }
+
+// Sync state routes (list/reset sync jobs)
+let syncStateRoutes = null;
+try {
+  syncStateRoutes = require('./routes/syncStateRoutes');
+} catch (e) {
+  console.warn('syncStateRoutes not found, skipping');
+}
+
 const notificationRoutes = require('./routes/notificationRoutes');
 
 // New live play‑by‑play SSE route
@@ -41,6 +52,8 @@ app.get('/api/health', (req, res) => res.json({ ok: true, uptime: process.uptime
 // Mount API routes
 app.use('/api/metrics', metricsRoutes);
 if (syncRoutes) app.use('/api/sync', syncRoutes);
+  // Expose sync state listing and reset endpoints
+if (syncStateRoutes) app.use('/api/syncstate', syncStateRoutes);
 app.use('/api/notifications', notificationRoutes);
 // Expose live play by play events: GET /api/live-play/:gameId
 app.use('/api/live-play', livePlayRoutes);

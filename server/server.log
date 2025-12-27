@@ -1,0 +1,13 @@
+
+> nfl-cards-server@1.0.0 start
+> node server.js
+
+syncRoutes not found, skipping
+(node:47086) [MONGOOSE] Warning: Duplicate schema index on {"gameId":1} found. This is often due to declaring an index using both "index: true" and "schema.index()". Please remove the duplicate index definition.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:47086) [MONGODB DRIVER] Warning: useNewUrlParser is a deprecated option: useNewUrlParser has no effect since Node.js Driver version 4.0.0 and will be removed in the next major version
+(node:47086) [MONGODB DRIVER] Warning: useUnifiedTopology is a deprecated option: useUnifiedTopology has no effect since Node.js Driver version 4.0.0 and will be removed in the next major version
+Connected to MongoDB: test
+🔔 notificationService: change streams established for Injury and AdvancedMetric
+Notification service started
+Server listening at http://localhost:4000

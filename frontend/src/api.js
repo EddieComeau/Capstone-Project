@@ -90,7 +90,8 @@ export async function fetchMetrics(entityType, entityId, season) {
  * Get the current sync states (jobs in progress). Returns an array of jobs.
  */
 export async function fetchSyncStates() {
-  return apiFetch('/api/sync/states');
+  // Use the syncstate endpoint which lists all sync jobs
+  return apiFetch('/api/syncstate');
 }
 
 /**
@@ -126,9 +127,11 @@ export async function triggerComputeDerived(opts = {}) {
 /**
  * Reset the sync state (clears cursors and in‑progress flags).
  */
-export async function resetSyncState() {
-  return apiFetch('/api/sync/reset', {
+export async function resetSyncState(key) {
+  // Reset a specific sync state by key or all if no key is given
+  return apiFetch('/api/syncstate/reset', {
     method: 'POST',
+    body: key ? { key } : {},
   });
 }
 

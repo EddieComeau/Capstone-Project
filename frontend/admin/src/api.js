@@ -1,67 +1,69 @@
+// frontend/admin/src/api.js
+// This module defines helper functions for the admin dashboard.  It uses
+// axios to call your Express backend.  Set REACT_APP_API_BASE in
+// frontend/admin/.env to the base URL for the API (e.g. http://localhost:4000/api).
+
 import axios from 'axios';
 
-// Determine API base URL.  CRA only exposes environment variables prefixed with REACT_APP_.
-// You should define REACT_APP_API_BASE in frontend/admin/.env (e.g. http://localhost:4000/api).
 const API_BASE = process.env.REACT_APP_API_BASE || '';
 
-// Fetch the current list of sync states.  The server defines this at GET /api/syncstate.
+// Fetch all sync states
 export async function fetchSyncStates() {
-  const res = await axios.get(`${API_BASE}/api/syncstate`);
+  const res = await axios.get(`${API_BASE}/syncstate`);
   return res.data;
 }
 
-// Reset a particular sync state.  This calls POST /api/syncstate/reset with a name payload.
-export async function resetSyncState(name) {
-  const res = await axios.post(`${API_BASE}/api/syncstate/reset`, { name });
+// Trigger a full players sync
+export async function triggerSyncPlayers(params = {}) {
+  const res = await axios.post(`${API_BASE}/sync/players`, params);
   return res.data;
 }
 
-// Trigger a players sync.  This calls POST /api/sync/players with optional parameters.
-export async function triggerSyncPlayers(opts = {}) {
-  const res = await axios.post(`${API_BASE}/api/sync/players`, opts);
+// Trigger a full games sync
+export async function triggerSyncGames(params = {}) {
+  const res = await axios.post(`${API_BASE}/sync/games`, params);
   return res.data;
 }
 
-// Trigger a games sync.  This calls POST /api/sync/games with optional parameters.
-export async function triggerSyncGames(opts = {}) {
-  const res = await axios.post(`${API_BASE}/api/sync/games`, opts);
+// Trigger computation of derived metrics (advanced stats, standings, matchups)
+export async function triggerComputeDerived(params = {}) {
+  const res = await axios.post(`${API_BASE}/sync/derived`, params);
   return res.data;
 }
 
-// Trigger the derived computation (advanced stats, standings, matchups).
-export async function triggerComputeDerived(opts = {}) {
-  const res = await axios.post(`${API_BASE}/api/sync/derived`, opts);
+// Reset a specific sync state (by key) or all states if no key is given
+export async function resetSyncState(params = {}) {
+  const res = await axios.post(`${API_BASE}/syncstate/reset`, params);
   return res.data;
 }
 
-// Webhook subscriptions
-export async function listWebhooks() {
-  const res = await axios.get(`${API_BASE}/api/webhooks`);
-  return res.data;
-}
-
-export async function createWebhook(webhook) {
-  const res = await axios.post(`${API_BASE}/api/webhooks`, webhook);
-  return res.data;
-}
-
-export async function deleteWebhook(id) {
-  const res = await axios.delete(`${API_BASE}/api/webhooks/${id}`);
-  return res.data;
-}
-
-// Alerts
+// Alerts and Webhooks (if your admin UI uses them)
 export async function listAlerts() {
-  const res = await axios.get(`${API_BASE}/api/alerts`);
+  const res = await axios.get(`${API_BASE}/notifications/alerts`);
   return res.data;
 }
 
-export async function createAlert(alert) {
-  const res = await axios.post(`${API_BASE}/api/alerts`, alert);
+export async function createAlert(body) {
+  const res = await axios.post(`${API_BASE}/notifications/alerts`, body);
   return res.data;
 }
 
 export async function deleteAlert(id) {
-  const res = await axios.delete(`${API_BASE}/api/alerts/${id}`);
+  const res = await axios.delete(`${API_BASE}/notifications/alerts/${id}`);
+  return res.data;
+}
+
+export async function listWebhooks() {
+  const res = await axios.get(`${API_BASE}/notifications/webhooks`);
+  return res.data;
+}
+
+export async function createWebhook(body) {
+  const res = await axios.post(`${API_BASE}/notifications/webhooks`, body);
+  return res.data;
+}
+
+export async function deleteWebhook(id) {
+  const res = await axios.delete(`${API_BASE}/notifications/webhooks/${id}`);
   return res.data;
 }
