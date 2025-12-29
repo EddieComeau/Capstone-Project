@@ -336,6 +336,12 @@ async function syncStats(options = {}) {
   while (pageCount < maxPages) {
     pageCount++;
     const params = { per_page };
+    // If a season filter is provided, include it in the API query. This
+    // limits the stats to that season (e.g., 2025 or 2024) and avoids
+    // fetching older data. Without this, the stats endpoint will return
+    // records across all seasons. See syncAllButStats.js for how the
+    // season parameter is passed.
+    if (options.season) params.season = options.season;
     if (cursor) params.cursor = cursor;
     console.log(`📄 Fetching stats page ${pageCount} params:`, JSON.stringify(params));
     const response = await ballDontLieService.listStats(params);

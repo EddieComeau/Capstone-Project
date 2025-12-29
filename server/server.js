@@ -1,105 +1,97 @@
-// server/server.js
+// Root server.js
+//
+// This file is the main entry point for the backend API and production
+// static hosting. It mounts API routes defined in the `server/` folder,
+// connects to MongoDB, starts the Express server, and, when
+// NODE_ENV=production, serves the built front‑end applications. The
+// main Vite app (in `frontend/dist`) is served at `/` and the admin CRA
+// build (in `frontend/admin/build`) is served under `/admin`.  API routes
+// remain prefixed under `/api`.  See docs/project.md for details.
+
 require('dotenv').config();
 
 const express = require('express');
-const mongoose = require('mongoose');
-const cors = require('cors');
 const morgan = require('morgan');
+const cors = require('cors');
+const mongoose = require('mongoose');
 const path = require('path');
+
+// Import API route modules from server/ folder
+const metricsRoutes = require('./server/routes/metricsRoutes');
+
+// Manual sync routes (players/games/derived)
+let syncRoutes = null;
+try {
+  syncRoutes = require('./server/routes/syncRoutes');
+} catch (e) {
+  console.warn('syncRoutes not found, skipping');
+}
+
+// Sync state routes (list/reset sync jobs)
+let syncStateRoutes = null;
+try {
+  syncStateRoutes = require('./server/routes/syncStateRoutes');
+} catch (e) {
+  console.warn('syncStateRoutes not found, skipping');
+}
+
+// Notifications and live play routes
+const notificationRoutes = require('./server/routes/notificationRoutes');
+const livePlayRoutes = require('./server/routes/livePlay');
+
+// Services
+const notificationService = require('./server/services/notificationService');
 
 const app = express();
 
-/* Optional security middleware; only runs if installed */
-try {
-  const helmet = require('helmet');
-  app.use(helmet());
-} catch (_) {}
-
-try {
-  const compression = require('compression');
-  app.use(compression());
-} catch (_) {}
-
-app.set('trust proxy', 1);
-
-// Configure CORS from environment or allow all
-const CORS_ORIGIN = process.env.CORS_ORIGIN;
-app.use(
-  cors(
-    CORS_ORIGIN
-      ? {
-          origin: CORS_ORIGIN.split(',').map(s => s.trim()),
-          credentials: true,
-        }
-      : undefined
-  )
-);
-
-// Body parsing & logging
+// Basic middleware
+app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan('dev'));
 
-// Load routes
-const metricsRoutes = require('./routes/metricsRoutes');
-const notificationRoutes = require('./routes/notificationRoutes');
-const livePlayRoutes = require('./routes/livePlay');
-
-let syncRoutes;
-try {
-  syncRoutes = require('./routes/syncRoutes');
-} catch (_) {
-  console.warn('syncRoutes not found, skipping');
-}
-
-let syncStateRoutes;
-try {
-  syncStateRoutes = require('./routes/syncStateRoutes');
-} catch (_) {
-  console.warn('syncStateRoutes not found, skipping');
-}
-
 // Health check
-app.get('/api/health', (req, res) => {
-  res.json({ ok: true, uptime: process.uptime(), now: new Date().toISOString() });
-});
+app.get('/api/health', (req, res) =>
+  res.json({ ok: true, uptime: process.uptime(), timestamp: new Date().toISOString() })
+);
 
 // Mount API routes
 app.use('/api/metrics', metricsRoutes);
-app.use('/api/notifications', notificationRoutes);
-app.use('/api/live-play', livePlayRoutes);
 if (syncRoutes) app.use('/api/sync', syncRoutes);
 if (syncStateRoutes) app.use('/api/syncstate', syncStateRoutes);
+app.use('/api/notifications', notificationRoutes);
+app.use('/api/live-play', livePlayRoutes);
 
-// Serve production builds when NODE_ENV=production
+// Production: serve built front‑ends
 if (process.env.NODE_ENV === 'production') {
-  // Note: this assumes you run server from /server directory
-  const mainBuild = path.join(__dirname, '..', 'frontend', 'build');
-  const adminBuild = path.join(__dirname, '..', 'frontend', 'admin', 'build');
+  // Main Vite build output (frontend/dist)
+  const mainDist = path.join(__dirname, 'frontend', 'dist');
+  // Admin CRA build output (frontend/admin/build)
+  const adminBuild = path.join(__dirname, 'frontend', 'admin', 'build');
 
-  // Serve admin at /admin
+  // Serve admin app at /admin
   app.use('/admin', express.static(adminBuild));
+  // Serve main app at /
+  app.use(express.static(mainDist));
 
-  // Serve main at /
-  app.use(express.static(mainBuild));
-
-  // SPA fallbacks
+  // SPA fallback for admin routes
   app.get('/admin/*', (req, res) => {
     res.sendFile(path.join(adminBuild, 'index.html'));
   });
+  // SPA fallback for all other non‑API routes (main app)
   app.get('*', (req, res) => {
-    res.sendFile(path.join(mainBuild, 'index.html'));
+    res.sendFile(path.join(mainDist, 'index.html'));
   });
 }
 
 // Error handler
 // eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {
-  console.error('Unhandled error:', err);
-  res.status(err.status || 500).json({ ok: false, error: err.message || 'Internal error' });
+  console.error('Unhandled error:', err && err.stack ? err.stack : err);
+  res.status(err.status || 500).json({ ok: false, error: err.message || 'internal' });
 });
 
-// MongoDB connection and server start
+// Connect to MongoDB and start server
 const PORT = Number(process.env.PORT || 4000);
 const MONGO_URI = process.env.MONGO_URI;
 
@@ -109,45 +101,27 @@ if (!MONGO_URI) {
 }
 
 mongoose.set('strictQuery', false);
-
-async function start() {
-  await mongoose.connect(MONGO_URI);
-  console.log('Connected to MongoDB:', mongoose.connection.db.databaseName);
-
-  // Start notification service watchers
-  try {
-    const notificationService = require('./services/notificationService');
-    await notificationService.start();
-    console.log('Notification service started');
-  } catch (err) {
-    console.warn('Notification service failed to start:', err?.message || err);
-  }
-
-  const server = app.listen(PORT, () => {
-    console.log(`Server listening at http://localhost:${PORT}`);
-    if (process.env.NODE_ENV === 'production') {
-      console.log(`Main App:  http://localhost:${PORT}/`);
-      console.log(`Admin App: http://localhost:${PORT}/admin`);
+mongoose
+  .connect(MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true })
+  .then(async () => {
+    console.log('Connected to MongoDB:', mongoose.connection.db.databaseName);
+    try {
+      await notificationService.start();
+      console.log('Notification service started');
+    } catch (err) {
+      console.warn('Failed to start notification service', err && err.message ? err.message : err);
     }
-  });
-
-  // Graceful shutdown
-  const shutdown = async signal => {
-    console.log(`\n${signal} received. Shutting down...`);
-    server.close(async () => {
-      try {
-        await mongoose.connection.close();
-      } catch (_) {}
-      process.exit(0);
+    app.listen(PORT, () => {
+      console.log(`Server listening at http://localhost:${PORT}`);
+      if (process.env.NODE_ENV === 'production') {
+        console.log(`Main App:  http://localhost:${PORT}/`);
+        console.log(`Admin App: http://localhost:${PORT}/admin`);
+      }
     });
-  };
-  process.on('SIGINT', () => shutdown('SIGINT'));
-  process.on('SIGTERM', () => shutdown('SIGTERM'));
-}
-
-start().catch(err => {
-  console.error('Startup failed:', err);
-  process.exit(1);
-});
+  })
+  .catch((err) => {
+    console.error('Mongo connect failed', err && err.message ? err.message : err);
+    process.exit(1);
+  });
 
 module.exports = app;
