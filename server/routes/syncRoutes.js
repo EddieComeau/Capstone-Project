@@ -36,6 +36,43 @@ router.post('/games', async (req, res, next) => {
   }
 });
 
+// POST /api/sync/stats
+// Trigger a full per-game player stats sync.  This endpoint invokes
+// syncService.syncStats() with any options passed in the request body.
+// Note: this operation can be very long‑running, as it iterates through
+// tens of thousands of stat records.  You can supply per_page or maxPages
+// in the body to control pagination.
+router.post('/stats', async (req, res, next) => {
+  try {
+    const {
+      season,
+      seasons,
+      per_page,
+      maxPages,
+      ...rest
+    } = req.body || {};
+    // Build a base params object from allowed options
+    const baseParams = {};
+    if (per_page) baseParams.per_page = per_page;
+    if (maxPages) baseParams.maxPages = maxPages;
+    // If seasons array is provided, sync each season individually to avoid
+    // pulling historical data unintentionally.  Otherwise, fall back to a
+    // single season or no season (which will sync all seasons).
+    if (Array.isArray(seasons) && seasons.length > 0) {
+      for (const s of seasons) {
+        await syncService.syncStats({ ...baseParams, season: s, ...rest });
+      }
+    } else if (season) {
+      await syncService.syncStats({ ...baseParams, season, ...rest });
+    } else {
+      await syncService.syncStats({ ...baseParams, ...rest });
+    }
+    res.json({ ok: true, message: 'Stats synced' });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // POST /api/sync/derived
 router.post('/derived', async (req, res, next) => {
   try {

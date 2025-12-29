@@ -1,17 +1,17 @@
 /*
  * Script to synchronize all NFL data sets from Ball Don't Lie for the current
- * and previous seasons, excluding the extremely long per‑game player stats
- * endpoint.  This script connects to MongoDB, fetches teams, players, games,
- * season aggregates, team stats, advanced metrics, play‑by‑play, odds,
- * player props, and injuries.  It then computes derived standings and
- * matchups.  Adjust the seasons array as needed.
+ * and previous seasons.  This script connects to MongoDB, fetches teams,
+ * players, games, **per‑game player stats**, season aggregates, team stats,
+ * advanced metrics, play‑by‑play, odds, player props, and injuries.  It
+ * then computes derived standings and matchups.  Adjust the seasons array
+ * as needed.
  */
 
 require('dotenv/config');
 
 const mongoose = require('mongoose');
 const connectDB = require('./db');
-const { syncPlayers, syncGames, syncTeams } = require('./services/syncService');
+const { syncPlayers, syncGames, syncTeams, syncStats } = require('./services/syncService');
 const fullSyncService = require('./services/fullSyncService');
 const desiredService = require('./services/desiredService');
 const Game = require('./models/Game');
@@ -30,6 +30,14 @@ const Game = require('./models/Game');
 
     // Seasons to sync; adjust as needed
     const seasons = [2025, 2024];
+
+    // Fetch per‑game player stats for each season.  The stats endpoint is
+    // extremely large when called without filters, so we supply a season
+    // parameter to restrict results to the seasons in the `seasons` array.
+    // You can adjust per_page or maxPages in the options object if needed.
+    for (const season of seasons) {
+      await syncStats({ per_page: 100, season });
+    }
 
     // Season and team aggregates
     await fullSyncService.syncSeasonStats({ seasons });
@@ -64,7 +72,7 @@ const Game = require('./models/Game');
     // Injuries
     await desiredService.syncInjuriesFromAPI({ per_page: 100 });
 
-    console.log('🎉 Finished syncing all endpoints (excluding per‑game player stats)');
+    console.log('🎉 Finished syncing all endpoints (including per‑game player stats)');
   } catch (err) {
     console.error(err);
   } finally {
