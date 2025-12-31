@@ -39,6 +39,10 @@ try {
 const notificationRoutes = require('./server/routes/notificationRoutes');
 const livePlayRoutes = require('./server/routes/livePlay');
 
+// Injuries routes
+const injuriesRoutes = require('./server/routes/injuries');
+const rosterRoutes = require('./server/routes/roster');
+
 // Services
 const notificationService = require('./server/services/notificationService');
 
@@ -61,6 +65,8 @@ if (syncRoutes) app.use('/api/sync', syncRoutes);
 if (syncStateRoutes) app.use('/api/syncstate', syncStateRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/live-play', livePlayRoutes);
+app.use('/api/injuries', injuriesRoutes);
+app.use('/api/roster', rosterRoutes);
 
 // Production: serve built front‑ends
 if (process.env.NODE_ENV === 'production') {

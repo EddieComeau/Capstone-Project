@@ -1,15 +1,52 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
+import { apiGet } from "../lib/api";
 import "./InjuriesPage.css";
 
 export default function InjuriesPage() {
-  const [current, setCurrent] = useState(sampleCurrentInjuries);
-  const [history, setHistory] = useState(samplePastInjuries);
+  // Current injuries fetched from the backend.  We initialise with an empty array
+  // and load data on mount.  Past injuries are currently not separated from the
+  // API response; if you wish to track recovered injuries separately, filter
+  // accordingly (e.g. by status or date).
+  const [current, setCurrent] = useState([]);
+  // History is reserved for recovered injuries added locally via the UI.  When
+  // injuries sync is implemented fully on the server (e.g. with a `status`
+  // property of "Recovered"), you could populate this from the API as well.
+  const [history, setHistory] = useState([]);
   const [form, setForm] = useState({
     player: "",
     team: "",
     status: "Questionable",
     detail: "",
   });
+
+  // Load injuries from the API on first render.  This uses the new
+  // `/api/injuries` endpoint implemented on the backend.  You can provide
+  // optional query params (e.g. team, playerId) via search inputs or
+  // filters; for now we fetch all injuries and sort them client‑side.
+  useEffect(() => {
+    async function loadInjuries() {
+      try {
+        const injuries = await apiGet('/injuries');
+        // injuries array contains objects with { player, status, comment, date, bdlId }
+        // Map into our local format: id (bdlId + date), player full name,
+        // team abbreviation, status, and comment/detail.  If any fields
+        // are missing, provide sensible defaults.
+        const mapped = (injuries || []).map((inj) => ({
+          id: `${inj.bdlId}-${inj.date}`,
+          player: inj.player?.full_name || `${inj.player?.first_name || ''} ${inj.player?.last_name || ''}`.trim(),
+          team: inj.player?.team?.abbreviation || '',
+          status: inj.status || '',
+          detail: inj.comment || '',
+          date: inj.date ? String(inj.date).slice(0, 10) : '',
+        }));
+        // You could split into current/history here based on status or date
+        setCurrent(mapped);
+      } catch (err) {
+        console.warn('Failed to load injuries', err);
+      }
+    }
+    loadInjuries();
+  }, []);
 
   const currentSorted = useMemo(
     () => [...current].sort((a, b) => a.player.localeCompare(b.player)),
@@ -129,40 +166,4 @@ export default function InjuriesPage() {
   );
 }
 
-const sampleCurrentInjuries = [
-  {
-    id: "c1",
-    player: "Devon Hart",
-    team: "Meteors",
-    status: "Questionable",
-    detail: "Hamstring tightness (day-to-day)",
-    date: "2024-08-12",
-  },
-  {
-    id: "c2",
-    player: "Miles Rowan",
-    team: "Hawks",
-    status: "Out",
-    detail: "Concussion protocol",
-    date: "2024-08-10",
-  },
-];
-
-const samplePastInjuries = [
-  {
-    id: "p1",
-    player: "Keenan Vale",
-    team: "Stallions",
-    status: "Recovered",
-    detail: "AC joint sprain",
-    date: "2024-07-21",
-  },
-  {
-    id: "p2",
-    player: "Andre Marsh",
-    team: "Armada",
-    status: "Recovered",
-    detail: "High ankle sprain",
-    date: "2024-07-02",
-  },
-];
+// Removed sample injuries; data now comes from the backend via apiGet

@@ -57,4 +57,33 @@ module.exports = {
   // PBP helpers
   getGames,
   getPlays,
+
+  /**
+   * Retrieve all player injuries from the Ball Don't Lie API.
+   *
+   * This helper wraps the `/player_injuries` endpoint and accepts optional
+   * pagination and filter parameters.  Arrays such as team_ids and
+   * player_ids are encoded as `team_ids[]` and `player_ids[]` per the
+   * BALLDONTLIE specification.
+   *
+   * @param {Object} params
+   *   @property {number} [per_page]  Number of records per page (1-100)
+   *   @property {number} [cursor]    Cursor for pagination
+   *   @property {number[]} [team_ids] Array of Ball Dont Lie team IDs to filter
+   *   @property {number[]} [player_ids] Array of player IDs to filter
+   * @returns {Promise<Object>} Response payload containing `data` and `meta`
+   */
+  async getPlayerInjuries(params = {}) {
+    const query = {};
+    if (params.per_page != null) query.per_page = Number(params.per_page);
+    if (params.cursor != null) query.cursor = Number(params.cursor);
+    if (Array.isArray(params.team_ids) && params.team_ids.length > 0) {
+      // ensure numeric values; Ball Don't Lie expects arrays encoded as team_ids[]
+      query['team_ids[]'] = params.team_ids.map(Number);
+    }
+    if (Array.isArray(params.player_ids) && params.player_ids.length > 0) {
+      query['player_ids[]'] = params.player_ids.map(Number);
+    }
+    return fetchFromSportsData('/player_injuries', query);
+  },
 };

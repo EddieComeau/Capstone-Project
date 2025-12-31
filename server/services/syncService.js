@@ -452,6 +452,90 @@ async function syncAllTeamsForWeek(season, week, options = {}) {
 }
 
 /* -------------------------------------------------------------------------- */
+/*                            Injuries sync function                          */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Sync player injuries from the Ball Don't Lie API.
+ *
+ * This function fetches pages of injury data from the upstream API and
+ * upserts each record into the Injury collection.  The unique key is
+ * determined by the player id and injury date.  Duplicate entries for
+ * the same player on the same date will be updated rather than inserted.
+ *
+ * @param {Object} options Optional settings: per_page (default 100), cursor, maxPages
+ * @returns {Promise<Object>} Summary of records fetched and upserted, plus next_cursor
+ */
+async function syncInjuries(options = {}) {
+  const Injury = require('../models/Injury');
+  const sportsdata = require('./sportsdataService');
+  let fetched = 0;
+  let upsertCount = 0;
+  const per_page = Number(options.per_page || 100);
+  let cursor = options.cursor || null;
+  const maxPages = Number(options.maxPages || 1000);
+  let pageCount = 0;
+  let previousCursor = null;
+  console.log('🔁 syncInjuries starting...');
+  while (pageCount < maxPages) {
+    pageCount++;
+    const params = { per_page };
+    if (cursor) params.cursor = cursor;
+    console.log(`📄 Fetching injuries page ${pageCount} params:`, JSON.stringify(params));
+    const response = await sportsdata.getPlayerInjuries(params);
+    const injuries = response && response.data ? response.data : [];
+    const meta = response && response.meta ? response.meta : {};
+    fetched += injuries.length;
+    console.log(`   Received ${injuries.length} injuries`);
+    if (cursor && cursor === previousCursor) {
+      console.warn('⚠️ Cursor did not advance; aborting.');
+      break;
+    }
+    const bulkOps = [];
+    for (const inj of injuries) {
+      if (!inj || !inj.player || !inj.player.id) continue;
+      const playerId = inj.player.id;
+      const date = inj.date ? new Date(inj.date) : null;
+      const filter = { 'player.id': playerId, date };
+      const update = {
+        player: inj.player,
+        status: inj.status || null,
+        comment: inj.comment || null,
+        date,
+        bdlId: playerId,
+        updatedAt: new Date(),
+      };
+      bulkOps.push({
+        updateOne: {
+          filter,
+          update: { $set: update, $setOnInsert: { createdAt: new Date() } },
+          upsert: true,
+        },
+      });
+    }
+    if (bulkOps.length > 0) {
+      try {
+        const result = await Injury.bulkWrite(bulkOps, { ordered: false });
+        // nUpserted is undefined in Mongoose 5; we estimate upserts by counting ops
+        upsertCount += (result.nUpserted || result.nInserted || bulkOps.length);
+      } catch (err) {
+        console.error('❌ bulkWrite failed for Injury:', err && err.message ? err.message : err);
+      }
+    }
+    const nextCursor = meta.next_cursor || meta.nextCursor || null;
+    console.log(`   Next cursor: ${nextCursor || 'null (last page)'}`);
+    if (!nextCursor || injuries.length === 0) {
+      cursor = nextCursor;
+      break;
+    }
+    previousCursor = cursor;
+    cursor = nextCursor;
+  }
+  console.log(`✅ syncInjuries complete — fetched: ${fetched}, upserted (approx): ${upsertCount}, pages: ${pageCount}`);
+  return { upsertCount, fetched, pages: pageCount, next_cursor: cursor };
+}
+
+/* -------------------------------------------------------------------------- */
 /*                                    Exports                                  */
 /* -------------------------------------------------------------------------- */
 
@@ -463,4 +547,5 @@ module.exports = {
   syncWeeklyForTeam,
   syncAllTeamsForWeek,
   syncTeams,
+  syncInjuries,
 };

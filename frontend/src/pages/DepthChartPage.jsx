@@ -1,5 +1,6 @@
 // src/pages/DepthChartPage.jsx
 import React, { useEffect, useMemo, useState } from "react";
+import { apiGet } from "../lib/api";
 import TeamBadge from "../components/common/TeamBadge";
 import PlayerAvatar from "../components/common/avatar";
 import "./DepthChartPage.css";
@@ -160,43 +161,106 @@ export default function DepthChartPage() {
   const [detailTab, setDetailTab] = useState("overview");
   const [compareTargetId, setCompareTargetId] = useState(null);
 
-  // Placeholder data (swap later with your BALDONTLIE-fed roster/depth logic)
-  const roster = useMemo(
-    () => ({
-      OFF: [
-        { position: "QB1", name: "Starter QB", number: 12, team: "KC", depthLabel: "Starter" },
-        { position: "RB1", name: "Starter RB", number: 22, team: "KC", depthLabel: "Starter" },
-        { position: "WR1", name: "WR One", number: 10, team: "KC", depthLabel: "Starter" },
-        { position: "WR2", name: "WR Two", number: 11, team: "KC", depthLabel: "Starter" },
-        { position: "TE1", name: "Starter TE", number: 87, team: "KC", depthLabel: "Starter" },
-        { position: "LT", name: "Left Tackle", number: 77, team: "KC", depthLabel: "Starter" },
-        { position: "LG", name: "Left Guard", number: 65, team: "KC", depthLabel: "Starter" },
-        { position: "C", name: "Center", number: 62, team: "KC", depthLabel: "Starter" },
-        { position: "RG", name: "Right Guard", number: 64, team: "KC", depthLabel: "Starter" },
-        { position: "RT", name: "Right Tackle", number: 71, team: "KC", depthLabel: "Starter" },
-      ],
-      DEF: [
-        { position: "CB1", name: "Corner 1", number: 2, team: "SF", depthLabel: "Starter" },
-        { position: "CB2", name: "Corner 2", number: 24, team: "SF", depthLabel: "Starter" },
-        { position: "FS", name: "Free Safety", number: 20, team: "SF", depthLabel: "Starter" },
-        { position: "SS", name: "Strong Safety", number: 29, team: "SF", depthLabel: "Starter" },
-        { position: "MLB", name: "Middle LB", number: 54, team: "SF", depthLabel: "Starter" },
-        { position: "OLB", name: "Outside LB", number: 51, team: "SF", depthLabel: "Starter" },
-        { position: "DE1", name: "Edge 1", number: 97, team: "SF", depthLabel: "Starter" },
-        { position: "DE2", name: "Edge 2", number: 94, team: "SF", depthLabel: "Starter" },
-        { position: "DT1", name: "DT 1", number: 99, team: "SF", depthLabel: "Starter" },
-        { position: "DT2", name: "DT 2", number: 91, team: "SF", depthLabel: "Starter" },
-      ],
-      ST: [
-        { position: "K", name: "Kicker", number: 7, team: "DAL", depthLabel: "Starter" },
-        { position: "P", name: "Punter", number: 5, team: "DAL", depthLabel: "Starter" },
-        { position: "KR", name: "Kick Returner", number: 1, team: "DAL", depthLabel: "Return" },
-        { position: "PR", name: "Punt Returner", number: 3, team: "DAL", depthLabel: "Return" },
-        { position: "LS", name: "Long Snapper", number: 46, team: "DAL", depthLabel: "Starter" },
-      ],
-    }),
-    []
-  );
+  // Currently selected team abbreviation.  Defaults to Kansas City (KC).  The
+  // user can select a different team from a dropdown of available teams.
+  const [teamAbbr, setTeamAbbr] = useState("KC");
+  // List of teams loaded from the backend to populate the dropdown
+  const [teams, setTeams] = useState([]);
+  // Roster data keyed by OFF/DEF/ST; will be populated from the backend
+  const [roster, setRoster] = useState({ OFF: [], DEF: [], ST: [] });
+
+  // Fetch list of teams on mount
+  useEffect(() => {
+    async function loadTeams() {
+      try {
+        const teamList = await apiGet('/teams/db');
+        setTeams(teamList || []);
+      } catch (err) {
+        console.warn('Failed to load teams', err);
+      }
+    }
+    loadTeams();
+  }, []);
+
+  // Fetch roster when team abbreviation changes
+  useEffect(() => {
+    async function loadRoster() {
+      if (!teamAbbr) return;
+      try {
+        const players = await apiGet(`/roster/${teamAbbr}`);
+        // Transform players into depth chart slots.  Players returned from
+        // `/roster/:abbr` contain at least { first_name, last_name, full_name,
+        // position, team } from the Player model.  We categorise by
+        // offensive, defensive and special teams positions.
+        const off = {};
+        const def = {};
+        const st = {};
+        // helper to push into bucket object keyed by position
+        function pushTo(bucket, pos, player) {
+          if (!bucket[pos]) bucket[pos] = [];
+          bucket[pos].push(player);
+        }
+        (players || []).forEach((p) => {
+          const name = p.full_name || `${p.first_name || ''} ${p.last_name || ''}`.trim();
+          const pos = (p.position || '').toUpperCase();
+          const base = pos.replace(/[0-9]/g, '');
+          const entry = {
+            position: '',
+            name,
+            number: p.raw?.jersey_number || p.jersey_number || '',
+            team: teamAbbr,
+            depthLabel: '',
+          };
+          // Offense
+          if (['QB', 'RB', 'HB', 'WR', 'TE', 'FB', 'C', 'G', 'T', 'OL'].includes(base)) {
+            pushTo(off, base || pos, entry);
+          } else if (['DL', 'DE', 'DT', 'LB', 'OLB', 'ILB', 'MLB', 'DB', 'CB', 'FS', 'SS'].includes(base)) {
+            pushTo(def, base || pos, entry);
+          } else if (['K', 'P', 'LS', 'KR', 'PR'].includes(base)) {
+            pushTo(st, base || pos, entry);
+          }
+        });
+        // Build arrays with position codes like QB1, WR1, etc.  We'll assign
+        // depth labels (Starter/Backup) based on index.
+        const offSlots = [];
+        // QB, RB/HB, WR, TE, OL (C,G,T).  Use index to number
+        if (off.QB) off.QB.forEach((p, idx) => offSlots.push({ ...p, position: `QB${idx + 1}`, depthLabel: idx === 0 ? 'Starter' : `QB${idx + 1}` }));
+        if (off.RB) off.RB.forEach((p, idx) => offSlots.push({ ...p, position: `RB${idx + 1}`, depthLabel: idx === 0 ? 'Starter' : `RB${idx + 1}` }));
+        if (off.HB && !off.RB) off.HB.forEach((p, idx) => offSlots.push({ ...p, position: `HB${idx + 1}`, depthLabel: idx === 0 ? 'Starter' : `HB${idx + 1}` }));
+        if (off.WR) off.WR.forEach((p, idx) => offSlots.push({ ...p, position: `WR${idx + 1}`, depthLabel: idx === 0 ? 'Starter' : `WR${idx + 1}` }));
+        if (off.TE) off.TE.forEach((p, idx) => offSlots.push({ ...p, position: `TE${idx + 1}`, depthLabel: idx === 0 ? 'Starter' : `TE${idx + 1}` }));
+        // Offensive line: C,G,T: treat them as single entries
+        if (off.C) off.C.forEach((p) => offSlots.push({ ...p, position: 'C', depthLabel: 'Starter' }));
+        if (off.G) off.G.forEach((p, idx) => offSlots.push({ ...p, position: idx === 0 ? 'LG' : 'RG', depthLabel: idx === 0 ? 'Starter' : 'Starter' }));
+        if (off.T) off.T.forEach((p, idx) => offSlots.push({ ...p, position: idx === 0 ? 'LT' : 'RT', depthLabel: idx === 0 ? 'Starter' : 'Starter' }));
+
+        const defSlots = [];
+        // Cornerbacks (CB), Safeties (FS,SS), Linebackers (LB/MLB/ILB/OLB), Defensive line (DL, DE, DT)
+        if (def.CB) def.CB.forEach((p, idx) => defSlots.push({ ...p, position: `CB${idx + 1}`, depthLabel: idx === 0 ? 'Starter' : `CB${idx + 1}` }));
+        if (def.FS) def.FS.forEach((p) => defSlots.push({ ...p, position: 'FS', depthLabel: 'Starter' }));
+        if (def.SS) def.SS.forEach((p) => defSlots.push({ ...p, position: 'SS', depthLabel: 'Starter' }));
+        // LB: prefer specific keys; unify other LB types
+        const lbBuckets = [].concat(def.OLB || [], def.ILB || [], def.MLB || [], def.LB || []);
+        lbBuckets.forEach((p, idx) => defSlots.push({ ...p, position: ['OLB','ILB','MLB','LB'][idx] || 'LB', depthLabel: idx === 0 ? 'Starter' : `LB${idx + 1}` }));
+        if (def.DL) def.DL.forEach((p, idx) => defSlots.push({ ...p, position: `DL${idx + 1}`, depthLabel: idx === 0 ? 'Starter' : `DL${idx + 1}` }));
+        if (def.DE) def.DE.forEach((p, idx) => defSlots.push({ ...p, position: `DE${idx + 1}`, depthLabel: idx === 0 ? 'Starter' : `DE${idx + 1}` }));
+        if (def.DT) def.DT.forEach((p, idx) => defSlots.push({ ...p, position: `DT${idx + 1}`, depthLabel: idx === 0 ? 'Starter' : `DT${idx + 1}` }));
+
+        const stSlots = [];
+        if (st.K) st.K.forEach((p, idx) => stSlots.push({ ...p, position: 'K', depthLabel: idx === 0 ? 'Starter' : `K${idx + 1}` }));
+        if (st.P) st.P.forEach((p, idx) => stSlots.push({ ...p, position: 'P', depthLabel: idx === 0 ? 'Starter' : `P${idx + 1}` }));
+        if (st.LS) st.LS.forEach((p) => stSlots.push({ ...p, position: 'LS', depthLabel: 'Starter' }));
+        if (st.KR) st.KR.forEach((p) => stSlots.push({ ...p, position: 'KR', depthLabel: 'Return' }));
+        if (st.PR) st.PR.forEach((p) => stSlots.push({ ...p, position: 'PR', depthLabel: 'Return' }));
+
+        // Update state
+        setRoster({ OFF: offSlots, DEF: defSlots, ST: stSlots });
+      } catch (err) {
+        console.warn('Failed to load roster', err);
+      }
+    }
+    loadRoster();
+  }, [teamAbbr]);
 
   const tabs = [
     { key: "OFF", label: "Offense" },
@@ -247,6 +311,22 @@ export default function DepthChartPage() {
     <div className="dcPage">
       <div className="dcHeader">
         <h2 className="dcTitle">Depth Chart</h2>
+        {/* Team selection dropdown allows the user to choose a roster. */}
+        <div className="teamSelect">
+          <label htmlFor="team-select" style={{ marginRight: '0.5rem' }}>Team:</label>
+          <select
+            id="team-select"
+            value={teamAbbr}
+            onChange={(e) => setTeamAbbr(e.target.value)}
+            style={{ padding: '0.25rem 0.5rem', borderRadius: '4px' }}
+          >
+            {teams.map((t) => (
+              <option key={t.abbreviation} value={t.abbreviation}>
+                {t.abbreviation}
+              </option>
+            ))}
+          </select>
+        </div>
         <div className="dcTabs">
           {tabs.map((t) => (
             <button

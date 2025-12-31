@@ -25,6 +25,12 @@ export async function triggerSyncGames(params = {}) {
   return res.data;
 }
 
+// Trigger a sync of player injuries
+export async function triggerSyncInjuries(params = {}) {
+  const res = await axios.post(`${API_BASE}/injuries/sync`, params);
+  return res.data;
+}
+
 // Trigger computation of derived metrics (advanced stats, standings, matchups)
 export async function triggerComputeDerived(params = {}) {
   const res = await axios.post(`${API_BASE}/sync/derived`, params);

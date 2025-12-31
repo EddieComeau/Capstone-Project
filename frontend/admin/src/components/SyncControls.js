@@ -9,6 +9,7 @@ import {
   triggerComputeDerived,
   fetchSyncStates,
   resetSyncState,
+  triggerSyncInjuries,
 } from '../api';
 
 /**
@@ -82,6 +83,13 @@ function SyncControls() {
           style={{ marginLeft: '0.5rem' }}
         >
           Sync Games
+        </button>
+        <button
+          onClick={() => runJob(triggerSyncInjuries, 'Injuries sync', { per_page: 100 })}
+          disabled={loading}
+          style={{ marginLeft: '0.5rem' }}
+        >
+          Sync Injuries
         </button>
         <button
           onClick={() => runJob(triggerComputeDerived, 'Derived metrics')}
