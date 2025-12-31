@@ -1,6 +1,7 @@
 // src/pages/DepthChartPage.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import { apiGet } from "../lib/api";
+import { mockDepthCharts } from "../data/mockDepthCharts";
 import TeamBadge from "../components/common/TeamBadge";
 import PlayerAvatar from "../components/common/avatar";
 import "./DepthChartPage.css";
@@ -253,8 +254,37 @@ export default function DepthChartPage() {
         if (st.KR) st.KR.forEach((p) => stSlots.push({ ...p, position: 'KR', depthLabel: 'Return' }));
         if (st.PR) st.PR.forEach((p) => stSlots.push({ ...p, position: 'PR', depthLabel: 'Return' }));
 
-        // Update state
-        setRoster({ OFF: offSlots, DEF: defSlots, ST: stSlots });
+        // If no players were found for any unit (likely because the DB is empty or
+        // syncing hasn’t been performed), fall back to a mock depth chart.  The
+        // mock dataset mirrors the shape of our depth chart structure and
+        // provides generic players for demonstration.  Otherwise use the
+        // computed slots.
+        if (offSlots.length === 0 && defSlots.length === 0 && stSlots.length === 0) {
+          const fallbackOff = Object.entries(mockDepthCharts.offense).map(([pos, p]) => ({
+            position: pos,
+            name: `${p.first_name || ''} ${p.last_name || ''}`.trim(),
+            number: p.jersey_number || '',
+            team: p.team || teamAbbr,
+            depthLabel: 'Starter',
+          }));
+          const fallbackDef = Object.entries(mockDepthCharts.defense).map(([pos, p]) => ({
+            position: pos,
+            name: `${p.first_name || ''} ${p.last_name || ''}`.trim(),
+            number: p.jersey_number || '',
+            team: p.team || teamAbbr,
+            depthLabel: 'Starter',
+          }));
+          const fallbackST = Object.entries(mockDepthCharts.specialTeams).map(([pos, p]) => ({
+            position: pos,
+            name: `${p.first_name || ''} ${p.last_name || ''}`.trim(),
+            number: p.jersey_number || '',
+            team: p.team || teamAbbr,
+            depthLabel: pos === 'KR' || pos === 'PR' ? 'Return' : 'Starter',
+          }));
+          setRoster({ OFF: fallbackOff, DEF: fallbackDef, ST: fallbackST });
+        } else {
+          setRoster({ OFF: offSlots, DEF: defSlots, ST: stSlots });
+        }
       } catch (err) {
         console.warn('Failed to load roster', err);
       }
