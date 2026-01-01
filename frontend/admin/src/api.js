@@ -5,7 +5,13 @@
 
 import axios from 'axios';
 
-const API_BASE = process.env.REACT_APP_API_BASE || '';
+// Determine base URL for API calls.  If REACT_APP_API_BASE is defined in
+// frontend/admin/.env, use it (e.g. http://localhost:4000/api).  Otherwise
+// default to '/api' so that relative paths resolve correctly when the
+// Express server is serving the admin build.  Without this fallback, the
+// dashboard would call endpoints like `/syncstate` instead of `/api/syncstate`,
+// resulting in 404 errors in production.  See server.js for route mounting.
+const API_BASE = process.env.REACT_APP_API_BASE || '/api';
 
 // Fetch all sync states
 export async function fetchSyncStates() {

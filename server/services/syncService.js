@@ -263,7 +263,18 @@ async function syncGames(options = {}) {
   console.log('🔁 syncGames starting...');
   while (pageCount < maxPages) {
     pageCount++;
+    // Build query params for the games endpoint.  Support filtering by a
+    // single season (options.season) or multiple seasons (options.seasons)
+    // according to the Ball Don't Lie API (which expects seasons[]=YYYY).  If
+    // no season is provided, the API returns games across all seasons.  See
+    // docs: https://nfl.balldontlie.io/#get-all-games for details【469995465038675†L739-L749】.
     const params = { per_page };
+    if (options.seasons && Array.isArray(options.seasons) && options.seasons.length) {
+      params.seasons = options.seasons;
+    } else if (options.season) {
+      // Accept season as a single year number or string
+      params.seasons = [options.season];
+    }
     if (cursor) params.cursor = cursor;
     console.log(`📄 Fetching games page ${pageCount} params:`, JSON.stringify(params));
     const response = await ballDontLieService.listGames(params);

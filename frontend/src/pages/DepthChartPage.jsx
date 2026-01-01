@@ -287,6 +287,33 @@ export default function DepthChartPage() {
         }
       } catch (err) {
         console.warn('Failed to load roster', err);
+        // If the API call fails (e.g. network error, missing data), fall back
+        // to the mock depth chart so the UI doesn’t remain empty.  This ensures
+        // that the depth chart page always displays something meaningful even
+        // when the backend isn’t populated or reachable.  The teamAbbr is
+        // passed through so players appear with the selected team acronym.
+        const fallbackOff = Object.entries(mockDepthCharts.offense).map(([pos, p]) => ({
+          position: pos,
+          name: `${p.first_name || ''} ${p.last_name || ''}`.trim(),
+          number: p.jersey_number || '',
+          team: p.team || teamAbbr,
+          depthLabel: 'Starter',
+        }));
+        const fallbackDef = Object.entries(mockDepthCharts.defense).map(([pos, p]) => ({
+          position: pos,
+          name: `${p.first_name || ''} ${p.last_name || ''}`.trim(),
+          number: p.jersey_number || '',
+          team: p.team || teamAbbr,
+          depthLabel: 'Starter',
+        }));
+        const fallbackST = Object.entries(mockDepthCharts.specialTeams).map(([pos, p]) => ({
+          position: pos,
+          name: `${p.first_name || ''} ${p.last_name || ''}`.trim(),
+          number: p.jersey_number || '',
+          team: p.team || teamAbbr,
+          depthLabel: pos === 'KR' || pos === 'PR' ? 'Return' : 'Starter',
+        }));
+        setRoster({ OFF: fallbackOff, DEF: fallbackDef, ST: fallbackST });
       }
     }
     loadRoster();
