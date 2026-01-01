@@ -2,8 +2,8 @@
 const mongoose = require('mongoose');
 
 const PlayerPropSchema = new mongoose.Schema({
-  gameId: { type: Number, index: true },
-  playerId: { type: Number, index: true },
+  gameId: { type: Number }, // indexed via compound index below
+  playerId: { type: Number }, // indexed via compound index below
   vendor: String,
   prop_type: String,
   value: mongoose.Schema.Types.Mixed,
