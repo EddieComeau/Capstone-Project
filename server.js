@@ -107,6 +107,14 @@ if (!MONGO_URI) {
 }
 
 mongoose.set('strictQuery', false);
+// Disable the 10s buffer timeout for queued operations.  By default, Mongoose
+// waits 10 seconds for the initial connection before timing out buffered
+// queries (which surfaces as "Operation X.find() buffering timed out").  Set
+// bufferTimeoutMS to 0 to disable this timeout so queries will wait
+// indefinitely until the connection is ready.  Note: this does not disable
+// command buffering entirely—Mongoose will still buffer commands until
+// connected.  See https://mongoosejs.com/docs/connections.html#buffering.
+mongoose.set('bufferTimeoutMS', 0);
 mongoose
   .connect(MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true })
   .then(async () => {

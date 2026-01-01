@@ -94,5 +94,7 @@ PlayerSchema.pre("save", function (next) {
 // Add indexes for common queries
 PlayerSchema.index({ position: 1 });
 PlayerSchema.index({ "team.id": 1 });
+// Add index on team abbreviation to speed up roster queries (e.g. find players by team)
+PlayerSchema.index({ "team.abbreviation": 1 });
 
 module.exports = mongoose.model("Player", PlayerSchema);

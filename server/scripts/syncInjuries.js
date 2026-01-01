@@ -4,7 +4,12 @@
 
 require('dotenv').config();
 const mongoose = require('mongoose');
-const derived = require('../services/derivedService');
+// In this branch, the advanced stats and injuries sync functions live in
+// `desiredService.js` rather than the previously used `derivedService.js`.  The
+// desiredService module exports `syncInjuriesFromAPI` which will fetch
+// injury reports from the Ball Don’t Lie API and upsert them into the
+// Injury collection.  Importing this here avoids a module-not-found error.
+const derived = require('../services/desiredService');
 
 async function main() {
   if (!process.env.MONGO_URI || !process.env.BALLDONTLIE_API_KEY) {

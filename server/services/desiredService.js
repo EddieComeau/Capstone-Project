@@ -161,6 +161,7 @@ async function syncAdvancedStatsEndpoint(type, options = {}) {
 async function computeAdvancedStats() {
   console.log('🔧 computeAdvancedStats: starting computed stats...');
   // Player-season aggregation (sums & averages)
+  // Use allowDiskUse to permit disk-based aggregation if memory limits are exceeded.
   const playerAgg = Stat.aggregate([
     { $match: { playerId: { $ne: null } } },
     {
@@ -171,6 +172,7 @@ async function computeAdvancedStats() {
       },
     },
   ])
+    .option({ allowDiskUse: true })
     .cursor({ batchSize: 200 });
 
   for await (const g of playerAgg) {
@@ -222,6 +224,7 @@ async function computeAdvancedStats() {
       },
     },
   ])
+    .option({ allowDiskUse: true })
     .cursor({ batchSize: 200 });
   for await (const g of teamAgg) {
     const teamId = g._id.teamId;
@@ -520,33 +523,30 @@ async function syncInjuriesFromAPI(options = {}) {
       break;
     }
     for (const rec of items) {
+      // Ensure record and player are defined
       if (!rec || !rec.player) continue;
       const player = rec.player;
-      const team = player.team || {};
-      const playerId = player.id || null;
-      const teamId = team.id || null;
+      // Use Ball Don't Lie player ID as the unique identifier (bdlId)
+      const bdlId = player.id;
+      // Injury status and comment/description
       const status = rec.status || 'Unknown';
-      const description = rec.comment || '';
-      const reportedAt = rec.date ? new Date(rec.date) : new Date();
-      const filter = {};
-      if (playerId != null) filter.playerId = playerId;
-      if (teamId != null) filter.teamId = teamId;
-      if (reportedAt) filter.reportedAt = reportedAt;
-      const upsertFilter = filter.reportedAt
-        ? filter
-        : { playerId: filter.playerId, teamId: filter.teamId, status };
+      const comment = rec.comment || '';
+      // Date the injury was reported; fall back to current date if missing
+      const date = rec.date ? new Date(rec.date) : new Date();
+      // Build a filter to uniquely identify an injury record: by player ID and date
+      const filter = { bdlId, date };
+      // Build the document to upsert; include full player payload for reference
       const updateDoc = {
-        playerId,
-        teamId,
+        player,
         status,
-        description,
-        source: 'balldontlie',
-        reportedAt,
+        comment,
+        date,
+        bdlId,
         raw: rec,
         updatedAt: new Date(),
       };
       try {
-        await Injury.updateOne(upsertFilter, { $set: updateDoc }, { upsert: true });
+        await Injury.updateOne(filter, { $set: updateDoc }, { upsert: true });
         upsertCount++;
       } catch (err) {
         console.warn('Failed injury upsert', err && err.message ? err.message : err);
