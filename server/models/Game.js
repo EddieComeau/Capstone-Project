@@ -13,7 +13,6 @@ const GameSchema = new mongoose.Schema({
   raw: { type: mongoose.Schema.Types.Mixed }
 }, { timestamps: true });
 
-// single unique index on gameId (only declared here)
-GameSchema.index({ gameId: 1 }, { unique: true });
+// unique index on gameId is already defined in the schema field above
 
 module.exports = mongoose.model('Game', GameSchema);
