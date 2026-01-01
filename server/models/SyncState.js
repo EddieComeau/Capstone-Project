@@ -8,7 +8,7 @@ const mongoose = require('mongoose');
  */
 const SyncStateSchema = new mongoose.Schema(
   {
-    key: { type: String, required: true, unique: true, index: true },
+    key: { type: String, required: true, unique: true },
     cursor: { type: String, default: null },
     updatedAt: { type: Date, default: Date.now },
     meta: { type: mongoose.Schema.Types.Mixed, default: null }

@@ -11,7 +11,7 @@ const mongoose = require("mongoose");
 const MatchupSchema = new mongoose.Schema(
   {
     // The gameId provided by BallDonLie (unique per game)
-    ballDontLieGameId: { type: Number, required: true, index: true, unique: true },
+    ballDontLieGameId: { type: Number, required: true, unique: true },
     // A local identifier for the game (also from BDL but may differ if using internal IDs)
     gameId: { type: Number, required: true, index: true },
     season: Number,

@@ -108,10 +108,12 @@ if (!MONGO_URI) {
 
 mongoose.set('strictQuery', false);
 
-// Respect MONGOOSE_BUFFER_TIMEOUT_MS env var if provided. Set to 0 for no timeout.
+// Respect MONGOOSE_BUFFER_TIMEOUT_MS env var if provided.
+// If not set, use a longer timeout (30000ms) to avoid premature timeouts
+// while waiting for MongoDB connection to establish.
 const bufferTimeout = process.env.MONGOOSE_BUFFER_TIMEOUT_MS
   ? Number(process.env.MONGOOSE_BUFFER_TIMEOUT_MS)
-  : 0;
+  : 30000;
 mongoose.set('bufferTimeoutMS', bufferTimeout);
 
 // Build Mongoose options dynamically from environment variables
