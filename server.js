@@ -8,7 +8,7 @@
 // build (in `frontend/admin/build`) is served under `/admin`.  API routes
 // remain prefixed under `/api`.  See docs/project.md for details.
 
-require('dotenv').config();
+require('dotenv').config(); // loads ROOT .env (repo root)
 
 const express = require('express');
 const morgan = require('morgan');
