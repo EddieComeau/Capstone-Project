@@ -108,10 +108,9 @@ if (!MONGO_URI) {
 
 mongoose.set('strictQuery', false);
 
-// Respect MONGOOSE_BUFFER_TIMEOUT_MS env var if provided. Set to 0 for no timeout.
-const bufferTimeout = process.env.MONGOOSE_BUFFER_TIMEOUT_MS
-  ? Number(process.env.MONGOOSE_BUFFER_TIMEOUT_MS)
-  : 30000; // Was: 0
+// Respect MONGOOSE_BUFFER_TIMEOUT_MS or MONGO_BUFFER_TIMEOUT_MS env var if provided. Set to 0 for no timeout.
+const bufferTimeoutEnv = process.env.MONGOOSE_BUFFER_TIMEOUT_MS || process.env.MONGO_BUFFER_TIMEOUT_MS;
+const bufferTimeout = bufferTimeoutEnv ? Number(bufferTimeoutEnv) : 30000; // Was: 0
 mongoose.set('bufferTimeoutMS', bufferTimeout);
 
 // Build Mongoose options dynamically from environment variables
