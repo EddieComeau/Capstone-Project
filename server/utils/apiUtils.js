@@ -43,7 +43,9 @@ async function bdlList(endpoint, params = {}) {
 
   const apiKey = process.env.BALLDONTLIE_API_KEY || process.env.BDL_API_KEY || process.env.BDL_KEY;
   if (!apiKey) {
-    throw new Error("BALLDONTLIE_API_KEY is not set in environment variables");
+    const error = new Error("BALLDONTLIE_API_KEY is not set in environment variables. Please set BALLDONTLIE_API_KEY, BDL_API_KEY, or BDL_KEY in your .env file.");
+    error.status = 503; // Service Unavailable
+    throw error;
   }
 
   const qs = serializeParams(params);
@@ -64,6 +66,17 @@ async function bdlList(endpoint, params = {}) {
     if (error.response) {
       console.error("Response status:", error.response.status);
       console.error("Response data:", error.response.data);
+      // Provide more helpful error messages based on status code
+      if (error.response.status === 401 || error.response.status === 403) {
+        const authError = new Error(`Ball Don't Lie API authentication failed. Please check your API key. (Status: ${error.response.status})`);
+        authError.status = 503; // Service Unavailable
+        throw authError;
+      }
+      if (error.response.status === 429) {
+        const rateLimitError = new Error(`Ball Don't Lie API rate limit exceeded. Please try again later.`);
+        rateLimitError.status = 429;
+        throw rateLimitError;
+      }
     }
     throw error;
   }
