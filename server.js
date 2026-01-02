@@ -1,15 +1,5 @@
-// Server entry point
-//
-// This file is the main entry point for the backend API and production
-// static hosting. It mounts API routes defined in the `server/` folder,
-// static hosting. It mounts API routes defined in the `routes/` folder,
-// connects to MongoDB, starts the Express server, and, when
-// NODE_ENV=production, serves the built front‑end applications. The
-// main Vite app (in `frontend/dist`) is served at `/` and the admin CRA
-// build (in `frontend/admin/build`) is served under `/admin`.  API routes
-// main Vite app (in `../frontend/dist`) is served at `/` and the admin CRA
-// build (in `../frontend/admin/build`) is served under `/admin`.  API routes
-// remain prefixed under `/api`.  See docs/project.md for details.
+// server.js – main API and static hosting for Sideline Studio
+// This file replaces the faulty root-level server.js on the full‑updated‑project branch.
 
 require('dotenv').config();
 
@@ -19,44 +9,26 @@ const cors = require('cors');
 const mongoose = require('mongoose');
 const path = require('path');
 
-// Import API route modules from server/ folder
+// Import API routes from the server/routes directory.  Each file defines a Router
+// for a particular resource (players, teams, games, etc.).  Do not import from
+// ./routes or duplicate these imports—the project only has one set of routes.
 const metricsRoutes = require('./server/routes/metricsRoutes');
-// Import API route modules from routes folder
-const metricsRoutes = require('./routes/metricsRoutes');
-
-// Manual sync routes (players/games/derived)
-let syncRoutes = null;
-try {
-  syncRoutes = require('./server/routes/syncRoutes');
-  syncRoutes = require('./routes/syncRoutes');
-} catch (e) {
-  console.warn('syncRoutes not found, skipping');
-}
-
-// Sync state routes (list/reset sync jobs)
-let syncStateRoutes = null;
-try {
-  syncStateRoutes = require('./server/routes/syncStateRoutes');
-  syncStateRoutes = require('./routes/syncStateRoutes');
-} catch (e) {
-  console.warn('syncStateRoutes not found, skipping');
-}
-
-// Notifications and live play routes
-const notificationRoutes = require('./server/routes/notificationRoutes');
-const livePlayRoutes = require('./server/routes/livePlay');
-const notificationRoutes = require('./routes/notificationRoutes');
-const livePlayRoutes = require('./routes/livePlay');
-
-// Injuries routes
+const authRoutes = require('./server/routes/auth');
+const boxscoresRoutes = require('./server/routes/boxscores');
+const cardsRoutes = require('./server/routes/cards');
+const gamesRoutes = require('./server/routes/games');
+const matchupsRoutes = require('./server/routes/matchups');
+const playByPlayRoutes = require('./server/routes/playByPlay');
+const playersRoutes = require('./server/routes/players');
+const standingsRoutes = require('./server/routes/standings');
+const teamsRoutes = require('./server/routes/teams');
+const syncRoutes = require('./server/routes/sync');
 const injuriesRoutes = require('./server/routes/injuries');
 const rosterRoutes = require('./server/routes/roster');
-const injuriesRoutes = require('./routes/injuries');
-const rosterRoutes = require('./routes/roster');
+const notificationRoutes = require('./server/routes/notificationRoutes');
 
 // Services
 const notificationService = require('./server/services/notificationService');
-const notificationService = require('./services/notificationService');
 
 const app = express();
 
@@ -66,32 +38,38 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan('dev'));
 
-// Health check
+// Health check endpoint — returns uptime and current timestamp
 app.get('/api/health', (req, res) =>
   res.json({ ok: true, uptime: process.uptime(), timestamp: new Date().toISOString() })
 );
 
-// Mount API routes
+// Mount API routes under their respective prefixes.  Each router handles its
+// own subpaths; e.g. cardsRoutes defines /player/:id, /team/:abbr, etc.
 app.use('/api/metrics', metricsRoutes);
-if (syncRoutes) app.use('/api/sync', syncRoutes);
-if (syncStateRoutes) app.use('/api/syncstate', syncStateRoutes);
-app.use('/api/notifications', notificationRoutes);
-app.use('/api/live-play', livePlayRoutes);
+app.use('/api/auth', authRoutes);
+app.use('/api/boxscores', boxscoresRoutes);
+app.use('/api/cards', cardsRoutes);
+app.use('/api/games', gamesRoutes);
+app.use('/api/matchups', matchupsRoutes);
+app.use('/api/playbyplay', playByPlayRoutes);
+app.use('/api/players', playersRoutes);
+app.use('/api/standings', standingsRoutes);
+app.use('/api/teams', teamsRoutes);
+app.use('/api/sync', syncRoutes);
 app.use('/api/injuries', injuriesRoutes);
 app.use('/api/roster', rosterRoutes);
+app.use('/api/notifications', notificationRoutes);
 
-// Production: serve built front‑ends
+// In production, serve the prebuilt front‑end assets (Vite and CRA builds).
+// The main Vite app lives under frontend/dist, and the admin CRA build is
+// under frontend/admin/build.  All non‑API routes are redirected to these.
 if (process.env.NODE_ENV === 'production') {
-  // Main Vite build output (frontend/dist)
   const mainDist = path.join(__dirname, 'frontend', 'dist');
-  const mainDist = path.join(__dirname, '..', 'frontend', 'dist');
-  // Admin CRA build output (frontend/admin/build)
   const adminBuild = path.join(__dirname, 'frontend', 'admin', 'build');
-  const adminBuild = path.join(__dirname, '..', 'frontend', 'admin', 'build');
 
   // Serve admin app at /admin
   app.use('/admin', express.static(adminBuild));
-  // Serve main app at /
+  // Serve main app at root
   app.use(express.static(mainDist));
 
   // SPA fallback for admin routes
@@ -104,16 +82,31 @@ if (process.env.NODE_ENV === 'production') {
   });
 }
 
-// Error handler
+// Generic error handler.  Any error passed via next(err) will end up here.
 // eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {
   console.error('Unhandled error:', err && err.stack ? err.stack : err);
   res.status(err.status || 500).json({ ok: false, error: err.message || 'internal' });
 });
 
-// Connect to MongoDB and start server
+// Connect to MongoDB and start the HTTP server.  Use environment variables for
+// connection string and pool size; default to port 4000.  If MONGO_URI is not
+// set, exit early.
 const PORT = Number(process.env.PORT || 4000);
-@@ -124,26 +124,26 @@ if (process.env.MONGO_MAX_POOL_SIZE) {
+const MONGO_URI = process.env.MONGO_URI;
+
+if (!MONGO_URI) {
+  console.error('MONGO_URI is not set');
+  process.exit(1);
+}
+
+// Build optional mongoose options from env
+const mongooseOpts = {};
+if (process.env.MONGO_MAX_POOL_SIZE) {
+  const poolSize = parseInt(process.env.MONGO_MAX_POOL_SIZE, 10);
+  if (!Number.isNaN(poolSize)) {
+    mongooseOpts.maxPoolSize = poolSize;
+  }
 }
 
 mongoose
@@ -124,7 +117,10 @@ mongoose
       await notificationService.start();
       console.log('Notification service started');
     } catch (err) {
-      console.warn('Failed to start notification service', err && err.message ? err.message : err);
+      console.warn(
+        'Failed to start notification service',
+        err && err.message ? err.message : err
+      );
     }
     app.listen(PORT, () => {
       console.log(`Server listening at http://localhost:${PORT}`);

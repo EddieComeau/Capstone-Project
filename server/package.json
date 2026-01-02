@@ -19,12 +19,12 @@
     "sync:plays": "node -e \"require('./services/derivedService').syncPlays({per_page:100}).then(console.log).catch(err=>{console.error(err);process.exit(1)})\"",
     "sync:odds": "node -e \"require('./services/derivedService').syncOdds({per_page:100}).then(console.log).catch(err=>{console.error(err);process.exit(1)})\"",
     "sync:playerprops": "node -e \"console.error('Set GAME_ID in script or pass via script'); process.exit(1)\"",
-    
     "sync:injuries": "node scripts/syncInjuries.js",
     "sync:data": "node scripts/syncAllData.js",
     "compute:derived": "node scripts/computeAllDerived.js",
     "compute:matchups": "node -e \"require('./services/derivedService').computeMatchups().then(()=>{console.log('done');process.exit(0)}).catch(err=>{console.error(err);process.exit(1)})\"",
     "compute:metrics": "node -e \"require('./services/derivedService').computeAdvancedStats().then(()=>{console.log('done');process.exit(0)}).catch(err=>{console.error(err);process.exit(1)})\"",
+    "debug:proxy": "node debugProxy.js",
     "test": "echo \"No tests configured\" && exit 0"
   },
   "dependencies": {
@@ -36,7 +36,11 @@
     "minimist": "^1.2.8",
     "mongoose": "^8.19.2",
     "morgan": "^1.10.0",
-    "node-cron": "^4.2.1"
+    "node-cron": "^4.2.1",
+    "express-rate-limit": "^6.7.0",
+    "zod": "^3.22.2",
+    "pino": "^8.15.0",
+    "pino-pretty": "^10.2.0"
   },
   "devDependencies": {
     "nodemon": "^3.1.0"
@@ -47,7 +51,8 @@
   "keywords": [
     "nfl",
     "balldontlie",
-    "mongodb"],
+    "mongodb"
+  ],
   "author": "Eddie Comeau",
   "license": "ISC"
 }
