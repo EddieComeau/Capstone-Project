@@ -1,4 +1,7 @@
-// server/models/Alert.js
+// Updated Alert.js with indexes to improve query performance. This model now
+// indexes the `webhook` foreign key and `createdAt` timestamp to accelerate
+// queries used by listing alerts and filtering by webhook ID.
+
 const mongoose = require('mongoose');
 
 const AlertSchema = new mongoose.Schema(
@@ -17,5 +20,10 @@ const AlertSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+// Index the webhook foreign key to speed up population and filtering by webhook
+AlertSchema.index({ webhook: 1 });
+// Index createdAt for efficient listing and sorting
+AlertSchema.index({ createdAt: -1 });
 
 module.exports = mongoose.model('Alert', AlertSchema);

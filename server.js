@@ -8,7 +8,7 @@
 // build (in `frontend/admin/build`) is served under `/admin`.  API routes
 // remain prefixed under `/api`.  See docs/project.md for details.
 
-require('dotenv').config(); // loads ROOT .env (repo root)
+require('dotenv').config();
 
 const express = require('express');
 const morgan = require('morgan');
@@ -111,7 +111,7 @@ mongoose.set('strictQuery', false);
 // Respect MONGOOSE_BUFFER_TIMEOUT_MS env var if provided. Set to 0 for no timeout.
 const bufferTimeout = process.env.MONGOOSE_BUFFER_TIMEOUT_MS
   ? Number(process.env.MONGOOSE_BUFFER_TIMEOUT_MS)
-  : 30000; // Was: 0
+  : 0;
 mongoose.set('bufferTimeoutMS', bufferTimeout);
 
 // Build Mongoose options dynamically from environment variables

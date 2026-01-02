@@ -1,4 +1,7 @@
-// server/models/WebhookSubscription.js
+// Updated WebhookSubscription.js with added index on createdAt to improve performance
+// when listing webhook subscriptions. This index helps with sorting and scanning
+// through the collection.
+
 const mongoose = require('mongoose');
 
 const WebhookSubscriptionSchema = new mongoose.Schema(
@@ -11,5 +14,8 @@ const WebhookSubscriptionSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+// Index the createdAt field for improved performance when listing webhooks
+WebhookSubscriptionSchema.index({ createdAt: -1 });
 
 module.exports = mongoose.model('WebhookSubscription', WebhookSubscriptionSchema);
