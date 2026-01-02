@@ -1,11 +1,14 @@
-// Root server.js
+// Server entry point
 //
 // This file is the main entry point for the backend API and production
 // static hosting. It mounts API routes defined in the `server/` folder,
+// static hosting. It mounts API routes defined in the `routes/` folder,
 // connects to MongoDB, starts the Express server, and, when
 // NODE_ENV=production, serves the built front‑end applications. The
 // main Vite app (in `frontend/dist`) is served at `/` and the admin CRA
 // build (in `frontend/admin/build`) is served under `/admin`.  API routes
+// main Vite app (in `../frontend/dist`) is served at `/` and the admin CRA
+// build (in `../frontend/admin/build`) is served under `/admin`.  API routes
 // remain prefixed under `/api`.  See docs/project.md for details.
 
 require('dotenv').config();
@@ -18,11 +21,14 @@ const path = require('path');
 
 // Import API route modules from server/ folder
 const metricsRoutes = require('./server/routes/metricsRoutes');
+// Import API route modules from routes folder
+const metricsRoutes = require('./routes/metricsRoutes');
 
 // Manual sync routes (players/games/derived)
 let syncRoutes = null;
 try {
   syncRoutes = require('./server/routes/syncRoutes');
+  syncRoutes = require('./routes/syncRoutes');
 } catch (e) {
   console.warn('syncRoutes not found, skipping');
 }
@@ -31,6 +37,7 @@ try {
 let syncStateRoutes = null;
 try {
   syncStateRoutes = require('./server/routes/syncStateRoutes');
+  syncStateRoutes = require('./routes/syncStateRoutes');
 } catch (e) {
   console.warn('syncStateRoutes not found, skipping');
 }
@@ -38,13 +45,18 @@ try {
 // Notifications and live play routes
 const notificationRoutes = require('./server/routes/notificationRoutes');
 const livePlayRoutes = require('./server/routes/livePlay');
+const notificationRoutes = require('./routes/notificationRoutes');
+const livePlayRoutes = require('./routes/livePlay');
 
 // Injuries routes
 const injuriesRoutes = require('./server/routes/injuries');
 const rosterRoutes = require('./server/routes/roster');
+const injuriesRoutes = require('./routes/injuries');
+const rosterRoutes = require('./routes/roster');
 
 // Services
 const notificationService = require('./server/services/notificationService');
+const notificationService = require('./services/notificationService');
 
 const app = express();
 
@@ -72,8 +84,10 @@ app.use('/api/roster', rosterRoutes);
 if (process.env.NODE_ENV === 'production') {
   // Main Vite build output (frontend/dist)
   const mainDist = path.join(__dirname, 'frontend', 'dist');
+  const mainDist = path.join(__dirname, '..', 'frontend', 'dist');
   // Admin CRA build output (frontend/admin/build)
   const adminBuild = path.join(__dirname, 'frontend', 'admin', 'build');
+  const adminBuild = path.join(__dirname, '..', 'frontend', 'admin', 'build');
 
   // Serve admin app at /admin
   app.use('/admin', express.static(adminBuild));
@@ -99,28 +113,7 @@ app.use((err, req, res, next) => {
 
 // Connect to MongoDB and start server
 const PORT = Number(process.env.PORT || 4000);
-const MONGO_URI = process.env.MONGO_URI;
-
-if (!MONGO_URI) {
-  console.error('MONGO_URI is not set');
-  process.exit(1);
-}
-
-mongoose.set('strictQuery', false);
-
-// Respect MONGOOSE_BUFFER_TIMEOUT_MS env var if provided. Set to 0 for no timeout.
-const bufferTimeout = process.env.MONGOOSE_BUFFER_TIMEOUT_MS
-  ? Number(process.env.MONGOOSE_BUFFER_TIMEOUT_MS)
-  : 0;
-mongoose.set('bufferTimeoutMS', bufferTimeout);
-
-// Build Mongoose options dynamically from environment variables
-const mongooseOpts = {};
-if (process.env.MONGO_MAX_POOL_SIZE) {
-  const maxPool = Number(process.env.MONGO_MAX_POOL_SIZE);
-  if (!Number.isNaN(maxPool) && maxPool > 0) {
-    mongooseOpts.maxPoolSize = maxPool;
-  }
+@@ -124,26 +124,26 @@ if (process.env.MONGO_MAX_POOL_SIZE) {
 }
 
 mongoose
