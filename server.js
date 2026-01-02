@@ -1,7 +1,11 @@
 // server.js – main API and static hosting for Sideline Studio
 // This file replaces the faulty root-level server.js on the full‑updated‑project branch.
 
-require('dotenv').config();
+// Load environment variables from the project root. When this server is executed
+// via `npm start` from the server/ directory, process.cwd() will be server/, but
+// __dirname points to the project root (where server.js lives). By explicitly
+// specifying the path, we ensure the .env file in the project root is loaded.
+require('dotenv').config({ path: require('path').join(__dirname, '.env') });
 
 const express = require('express');
 const morgan = require('morgan');
@@ -9,8 +13,8 @@ const cors = require('cors');
 const mongoose = require('mongoose');
 const path = require('path');
 
-// Import API routes from the server/routes directory.  Each file defines a Router
-// for a particular resource (players, teams, games, etc.).  Do not import from
+// Import API routes from the server/routes directory. Each file defines a Router
+// for a particular resource (players, teams, games, etc.). Do not import from
 // ./routes or duplicate these imports—the project only has one set of routes.
 const metricsRoutes = require('./server/routes/metricsRoutes');
 const authRoutes = require('./server/routes/auth');
@@ -43,7 +47,7 @@ app.get('/api/health', (req, res) =>
   res.json({ ok: true, uptime: process.uptime(), timestamp: new Date().toISOString() })
 );
 
-// Mount API routes under their respective prefixes.  Each router handles its
+// Mount API routes under their respective prefixes. Each router handles its
 // own subpaths; e.g. cardsRoutes defines /player/:id, /team/:abbr, etc.
 app.use('/api/metrics', metricsRoutes);
 app.use('/api/auth', authRoutes);
@@ -62,7 +66,7 @@ app.use('/api/notifications', notificationRoutes);
 
 // In production, serve the prebuilt front‑end assets (Vite and CRA builds).
 // The main Vite app lives under frontend/dist, and the admin CRA build is
-// under frontend/admin/build.  All non‑API routes are redirected to these.
+// under frontend/admin/build. All non‑API routes are redirected to these.
 if (process.env.NODE_ENV === 'production') {
   const mainDist = path.join(__dirname, 'frontend', 'dist');
   const adminBuild = path.join(__dirname, 'frontend', 'admin', 'build');
@@ -82,15 +86,15 @@ if (process.env.NODE_ENV === 'production') {
   });
 }
 
-// Generic error handler.  Any error passed via next(err) will end up here.
+// Generic error handler. Any error passed via next(err) will end up here.
 // eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {
   console.error('Unhandled error:', err && err.stack ? err.stack : err);
   res.status(err.status || 500).json({ ok: false, error: err.message || 'internal' });
 });
 
-// Connect to MongoDB and start the HTTP server.  Use environment variables for
-// connection string and pool size; default to port 4000.  If MONGO_URI is not
+// Connect to MongoDB and start the HTTP server. Use environment variables for
+// connection string and pool size; default to port 4000. If MONGO_URI is not
 // set, exit early.
 const PORT = Number(process.env.PORT || 4000);
 const MONGO_URI = process.env.MONGO_URI;
