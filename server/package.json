@@ -1,11 +1,11 @@
 {
   "name": "nfl-cards-server",
   "version": "1.0.0",
-  "description": "NFL Cards backend — syncs BallDon'tLie NFL data (players, teams, games, stats, injuries, odds, plays) into MongoDB and computes derived metrics.",
+  "description": "NFL Cards backend \u2014 syncs BallDon'tLie NFL data (players, teams, games, stats, injuries, odds, plays) into MongoDB and computes derived metrics.",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "nodemon server.js",
+    "start": "node ../server.js",
+    "dev": "nodemon ../server.js",
     "health": "node -e \"console.log('ok')\"",
     "sync:players": "node scripts/testSync.js",
     "sync:teams": "node scripts/syncAllTeams.js",
@@ -24,7 +24,7 @@
     "compute:derived": "node scripts/computeAllDerived.js",
     "compute:matchups": "node -e \"require('./services/derivedService').computeMatchups().then(()=>{console.log('done');process.exit(0)}).catch(err=>{console.error(err);process.exit(1)})\"",
     "compute:metrics": "node -e \"require('./services/derivedService').computeAdvancedStats().then(()=>{console.log('done');process.exit(0)}).catch(err=>{console.error(err);process.exit(1)})\"",
-    "debug:proxy": "node debugProxy.js",
+    "debug:proxy": "node ../debugProxy.js",
     "test": "echo \"No tests configured\" && exit 0"
   },
   "dependencies": {
@@ -40,7 +40,8 @@
     "express-rate-limit": "^6.7.0",
     "zod": "^3.22.2",
     "pino": "^8.15.0",
-    "pino-pretty": "^10.2.0"
+    "pino-pretty": "^10.2.0",
+    "bcryptjs": "^2.4.3"
   },
   "devDependencies": {
     "nodemon": "^3.1.0"
