@@ -3,7 +3,7 @@
 // This service contains functions for syncing advanced player/team
 // metrics from the Ball Don’t Lie API, computing derived statistics
 // from your existing Stat documents, and aggregating those results
-// into a unified AdvancedMetric collection.  It also includes
+// into a unified AdvancedMetric collection. It also includes
 // helpers for computing league standings, matchups and syncing
 // injuries from the API.
 //
@@ -43,7 +43,7 @@ async function setSyncCursor(key, cursor, meta = null) {
         updatedAt: new Date(),
       },
     },
-    { upsert: true }
+    { upsert: true },
   );
   return cursor;
 }
@@ -161,19 +161,20 @@ async function syncAdvancedStatsEndpoint(type, options = {}) {
 async function computeAdvancedStats() {
   console.log('🔧 computeAdvancedStats: starting computed stats...');
   // Player-season aggregation (sums & averages)
-  // Use allowDiskUse to permit disk-based aggregation if memory limits are exceeded.
-  const playerAgg = Stat.aggregate([
-    { $match: { playerId: { $ne: null } } },
-    {
-      $group: {
-        _id: { playerId: '$playerId', season: '$season' },
-        count: { $sum: 1 },
-        statsList: { $push: '$stats' },
+  // Use allowDiskUse on the aggregate options to permit disk-based aggregation if memory limits are exceeded.
+  const playerAgg = Stat.aggregate(
+    [
+      { $match: { playerId: { $ne: null } } },
+      {
+        $group: {
+          _id: { playerId: '$playerId', season: '$season' },
+          count: { $sum: 1 },
+          statsList: { $push: '$stats' },
+        },
       },
-    },
-  ])
-    .option({ allowDiskUse: true })
-    .cursor({ batchSize: 200 });
+    ],
+    { allowDiskUse: true },
+  ).cursor({ batchSize: 200 });
 
   for await (const g of playerAgg) {
     const playerId = g._id.playerId;
@@ -206,7 +207,7 @@ async function computeAdvancedStats() {
         },
         $setOnInsert: { entityType: 'player', entityId: playerId, season, scope },
       },
-      { upsert: true }
+      { upsert: true },
     );
     // compute specific advanced metrics (QB passer rating etc) for this player-season
     await computeSpecificMetricsForPlayerSeason(playerId, season, scope);
@@ -214,18 +215,19 @@ async function computeAdvancedStats() {
     await mergeAdvancedSources('player', playerId, season, scope);
   }
   // Team-season computed aggregation
-  const teamAgg = Stat.aggregate([
-    { $match: { teamId: { $ne: null } } },
-    {
-      $group: {
-        _id: { teamId: '$teamId', season: '$season' },
-        count: { $sum: 1 },
-        statsList: { $push: '$stats' },
+  const teamAgg = Stat.aggregate(
+    [
+      { $match: { teamId: { $ne: null } } },
+      {
+        $group: {
+          _id: { teamId: '$teamId', season: '$season' },
+          count: { $sum: 1 },
+          statsList: { $push: '$stats' },
+        },
       },
-    },
-  ])
-    .option({ allowDiskUse: true })
-    .cursor({ batchSize: 200 });
+    ],
+    { allowDiskUse: true },
+  ).cursor({ batchSize: 200 });
   for await (const g of teamAgg) {
     const teamId = g._id.teamId;
     const season = g._id.season;
@@ -255,7 +257,7 @@ async function computeAdvancedStats() {
         },
         $setOnInsert: { entityType: 'team', entityId: teamId, season, scope },
       },
-      { upsert: true }
+      { upsert: true },
     );
     // compute specific team metrics if needed
     await computeSpecificMetricsForTeamSeason(teamId, season, scope);
@@ -364,7 +366,11 @@ async function mergeAdvancedSources(entityType, entityId, season, scope = 'seaso
       if (merged[k] === undefined || merged[k] === null) merged[k] = v;
     }
   }
-  const gameCount = (computed && computed.gameCount) || doc.gameCount || (bdl && (bdl.games || bdl.gameCount)) || 0;
+  const gameCount =
+    (computed && computed.gameCount) ||
+    doc.gameCount ||
+    (bdl && (bdl.games || bdl.gameCount)) ||
+    0;
   await AdvancedMetric.updateOne(filter, { $set: { metrics: merged, gameCount, updatedAt: new Date() } });
   return merged;
 }
@@ -490,7 +496,7 @@ async function computeMatchups() {
           updatedAt: new Date(),
         },
       },
-      { upsert: true }
+      { upsert: true },
     );
   }
 }
