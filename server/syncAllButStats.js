@@ -1,10 +1,11 @@
 /*
  * Script to synchronize all NFL data sets from Ball Don't Lie for the current
  * and previous seasons.  This script connects to MongoDB, fetches teams,
- * players, games, **per‑game player stats**, season aggregates, team stats,
+ * players, games, per‑game player stats, season aggregates, team stats,
  * advanced metrics, play‑by‑play, odds, player props, and injuries.  It
- * then computes derived standings and matchups.  Adjust the seasons array
- * as needed.
+ * then computes derived standings and matchups.  The seasons to sync are
+ * determined dynamically based on the current year or via the SYNC_SEASONS
+ * environment variable (comma‑separated list).
  */
 
 require('dotenv/config');
@@ -15,6 +16,20 @@ const { syncPlayers, syncGames, syncTeams, syncStats } = require('./services/syn
 const fullSyncService = require('./services/fullSyncService');
 const desiredService = require('./services/desiredService');
 const Game = require('./models/Game');
+
+// Determine the seasons to sync.  If SYNC_SEASONS is provided in the
+// environment (comma‑separated list), it will be used.  Otherwise, use
+// the current year and the previous year as defaults.
+function getDefaultSeasons() {
+  const currentYear = new Date().getFullYear();
+  return [currentYear, currentYear - 1];
+}
+
+const seasons = process.env.SYNC_SEASONS
+  ? process.env.SYNC_SEASONS.split(',')
+      .map((s) => Number(s.trim()))
+      .filter((n) => !Number.isNaN(n))
+  : getDefaultSeasons();
 
 (async () => {
   try {
@@ -27,9 +42,6 @@ const Game = require('./models/Game');
     // Sync players and games
     await syncPlayers({ per_page: 100 });
     await syncGames({ per_page: 100 });
-
-    // Seasons to sync; adjust as needed
-    const seasons = [2025, 2024];
 
     // Fetch per‑game player stats for each season.  The stats endpoint is
     // extremely large when called without filters, so we supply a season
@@ -62,7 +74,7 @@ const Game = require('./models/Game');
 
     // Gather game IDs for the selected seasons
     const gameDocs = await Game.find({ season: { $in: seasons } }).lean();
-    const gameIds = gameDocs.map(g => g.gameId || g.id).filter(Boolean);
+    const gameIds = gameDocs.map((g) => g.gameId || g.id).filter(Boolean);
 
     // Play‑by‑play, odds, and player props for all games
     await fullSyncService.syncPlaysForGames({ gameIds });

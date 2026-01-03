@@ -5,7 +5,9 @@
  * persist BallDon'tLie official standings for the specified seasons.  It
  * connects to MongoDB, loads all teams, syncs each team's players, then
  * calls the /nfl/v1/standings endpoint and upserts the results into the
- * Standing collection.  Adjust the seasons array below as needed.
+ * Standing collection.  The seasons to sync are determined dynamically
+ * based on the current and previous year or via the SYNC_SEASONS
+ * environment variable.
  */
 
 require('dotenv/config');
@@ -15,11 +17,22 @@ const connectDB = require('./db');
 const { syncTeams, syncTeamPlayers } = require('./services/syncService');
 const ballDontLieService = require('./services/ballDontLieService');
 
-// We'll require the Team model at runtime after connection and when needed.
+// We'll require the Team and Standing models at runtime after connection
 const Standing = require('./models/Standing');
 
-// Seasons to sync BDL standings for.  Modify as needed.
-const seasonsToSync = [2025, 2024];
+// Determine the seasons to sync for BDL standings.  Use SYNC_SEASONS
+// (comma‑separated) if provided; otherwise default to current and
+// previous year.
+function getDefaultSeasons() {
+  const currentYear = new Date().getFullYear();
+  return [currentYear, currentYear - 1];
+}
+
+const seasonsToSync = process.env.SYNC_SEASONS
+  ? process.env.SYNC_SEASONS.split(',')
+      .map((s) => Number(s.trim()))
+      .filter((n) => !Number.isNaN(n))
+  : getDefaultSeasons();
 
 (async () => {
   try {
@@ -47,10 +60,10 @@ const seasonsToSync = [2025, 2024];
       }
     }
 
-    // Sync BallDon'tLie official standings for each season
+    // Sync BallDon'tLie official standings for each season in seasonsToSync
     for (const season of seasonsToSync) {
       console.log(`🔁 Syncing BDL standings for season ${season}...`);
-      // The /nfl/v1/standings endpoint accepts only a season parameter【622477558119146†L5940-L5958】
+      // The /nfl/v1/standings endpoint accepts only a season parameter
       const res = await ballDontLieService.listStandings({ season });
       const standings = res && res.data ? res.data : [];
       console.log(`   Received ${standings.length} standing records`);
