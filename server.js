@@ -1,4 +1,4 @@
-// server.js (admin removed)
+// server.js with corrected module paths (admin removed)
 
 // Load environment variables from .env
 require('dotenv').config();
@@ -9,15 +9,15 @@ const cors = require('cors');
 const mongoose = require('mongoose');
 const cron = require('node-cron');
 
-// Routes
-const metricsRoutes = require('./routes/metricsRoutes');
-// Note: we intentionally do not load syncRoutes here.  All data syncs are handled
-// automatically on startup and via scheduled jobs.  The manual admin endpoints
-// have been removed.
-const notificationRoutes = require('./routes/notificationRoutes');
+// Import routes from the server subdirectory.  These paths point to files
+// under the `server/` folder because the main `server.js` lives at the
+// project root.  Without the `server/` prefix Node would search for a
+// `routes` folder at the root (which does not exist).
+const metricsRoutes = require('./server/routes/metricsRoutes');
+const notificationRoutes = require('./server/routes/notificationRoutes');
 
-// Services
-const notificationService = require('./services/notificationService');
+// Notification service (for watching MongoDB change streams)
+const notificationService = require('./server/services/notificationService');
 
 const app = express();
 
@@ -63,8 +63,9 @@ mongoose
       (async () => {
         console.log('🔄 Running initial data sync...');
         try {
-          await require('./syncAllButStats');
-          await require('./syncRemainingData');
+          // Sync scripts live in the `server/` folder; require them with the prefix.
+          await require('./server/syncAllButStats');
+          await require('./server/syncRemainingData');
           console.log('✅ Initial data sync complete');
         } catch (err) {
           console.error('❌ Initial data sync failed', err && err.message ? err.message : err);
@@ -79,8 +80,8 @@ mongoose
     cron.schedule(schedule, async () => {
       console.log('🔄 Weekly data sync starting...');
       try {
-        await require('./syncAllButStats');
-        await require('./syncRemainingData');
+        await require('./server/syncAllButStats');
+        await require('./server/syncRemainingData');
         console.log('✅ Weekly data sync complete');
       } catch (err) {
         console.error('❌ Weekly data sync failed', err && err.message ? err.message : err);
