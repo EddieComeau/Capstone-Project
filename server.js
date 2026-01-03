@@ -57,9 +57,15 @@ app.use(express.static(distDir));
 // For any route not handled by the above (i.e. not starting with /api),
 // return the HTML entry point.  The catch-all must come after
 // express.static so that existing static files are served correctly.
-app.get('*', (req, res) => {
-  // If the request path starts with /api we defer to the API routes.
-  if (req.path.startsWith('/api')) return res.status(404).json({ ok: false, error: 'Not found' });
+//
+// We use a regular expression with a negative lookahead to exclude `/api`
+// endpoints from matching here.  This avoids issues where Express would
+// interpret a bare `*` path as an unnamed parameter, which triggers
+// a `Missing parameter name` error in path-to-regexp.  The regex
+// `^/(?!api).*` matches any path starting with a slash that does not
+// immediately follow with `api`.  Requests matching this pattern will
+// be served the React entry point to enable client-side routing.
+app.get(/^\/(?!api).*/, (req, res) => {
   res.sendFile(path.join(distDir, 'index.html'));
 });
 
