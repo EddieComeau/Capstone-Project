@@ -9,6 +9,12 @@ const cors = require('cors');
 const mongoose = require('mongoose');
 const cron = require('node-cron');
 
+// Node's built-in path module is used to resolve the location of the built
+// frontend assets.  These assets live in `frontend/dist` relative to the
+// repository root.  Without using path.join() the code would fail when
+// running from different working directories.
+const path = require('path');
+
 // Import routes from the server subdirectory.  These paths point to files
 // under the `server/` folder because the main `server.js` lives at the
 // project root.  Without the `server/` prefix Node would search for a
@@ -33,6 +39,29 @@ app.get('/api/health', (req, res) => res.json({ ok: true, uptime: process.uptime
 // Mount API routes
 app.use('/api/metrics', metricsRoutes);
 app.use('/api/notifications', notificationRoutes);
+
+// ---------------------------
+// Static frontend serving
+// ---------------------------
+// When the frontend is built (via `npm run build` in the `frontend` folder),
+// its optimised assets are output to `frontend/dist`.  In production we
+// serve those files directly from Express so that a single Node process can
+// handle both the API and the React app.  The order here matters: static
+// routes are defined after the API routes so that `/api/*` continues to
+// match first.  Any non-API request will fall through to this static
+// handler and ultimately serve the React `index.html` for client-side
+// routing.
+const distDir = path.join(__dirname, 'frontend', 'dist');
+// Serve static files (JS, CSS, images, etc.)
+app.use(express.static(distDir));
+// For any route not handled by the above (i.e. not starting with /api),
+// return the HTML entry point.  The catch-all must come after
+// express.static so that existing static files are served correctly.
+app.get('*', (req, res) => {
+  // If the request path starts with /api we defer to the API routes.
+  if (req.path.startsWith('/api')) return res.status(404).json({ ok: false, error: 'Not found' });
+  res.sendFile(path.join(distDir, 'index.html'));
+});
 
 // Global error handler
 app.use((err, req, res, next) => {
