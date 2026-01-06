@@ -7,6 +7,11 @@
  * determined dynamically based on the current year or via the SYNC_SEASONS
  * environment variable (comma‑separated list).
  */
+// 🔒 Load root .env no matter where script is run from
+const path = require("path");
+require("dotenv").config({
+  path: path.join(__dirname, "..", ".env"),
+});
 
 require('dotenv/config');
 

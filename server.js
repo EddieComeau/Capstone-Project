@@ -1,6 +1,6 @@
-// server.js with corrected module paths (admin removed)
+// server.js with corrected module paths and full read-only API routes
 
-// Load environment variables from .env
+// Load environment variables from .env (searches the current working directory)
 require('dotenv').config();
 
 const express = require('express');
@@ -8,21 +8,26 @@ const morgan = require('morgan');
 const cors = require('cors');
 const mongoose = require('mongoose');
 const cron = require('node-cron');
-
-// Node's built-in path module is used to resolve the location of the built
-// frontend assets.  These assets live in `frontend/dist` relative to the
-// repository root.  Without using path.join() the code would fail when
-// running from different working directories.
 const path = require('path');
 
-// Import routes from the server subdirectory.  These paths point to files
-// under the `server/` folder because the main `server.js` lives at the
-// project root.  Without the `server/` prefix Node would search for a
-// `routes` folder at the root (which does not exist).
+// Import API route modules.  Each route file lives under `server/routes/`.
+// Only read‑only routes (GET endpoints) are mounted here.  Sync endpoints
+// that trigger data ingestion (e.g. players/sync) have been removed from
+// the Express router to avoid accidental manual syncs.
 const metricsRoutes = require('./server/routes/metricsRoutes');
 const notificationRoutes = require('./server/routes/notificationRoutes');
+const teamsRoutes = require('./server/routes/teams');
+const matchupsRoutes = require('./server/routes/matchups');
+const gamesRoutes = require('./server/routes/games');
+const standingsRoutes = require('./server/routes/standings');
+const playByPlayRoutes = require('./server/routes/playByPlay');
+const boxscoresRoutes = require('./server/routes/boxscores');
+const cardsRoutes = require('./server/routes/cards');
+const rosterRoutes = require('./server/routes/roster');
+const injuriesRoutes = require('./server/routes/injuries');
+const authRoutes = require('./server/routes/auth');
 
-// Notification service (for watching MongoDB change streams)
+// Notification service for MongoDB change streams
 const notificationService = require('./server/services/notificationService');
 
 const app = express();
@@ -39,32 +44,27 @@ app.get('/api/health', (req, res) => res.json({ ok: true, uptime: process.uptime
 // Mount API routes
 app.use('/api/metrics', metricsRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/teams', teamsRoutes);
+app.use('/api/matchups', matchupsRoutes);
+app.use('/api/games', gamesRoutes);
+app.use('/api/standings', standingsRoutes);
+app.use('/api/playbyplay', playByPlayRoutes);
+app.use('/api/boxscores', boxscoresRoutes);
+app.use('/api/cards', cardsRoutes);
+app.use('/api/roster', rosterRoutes);
+app.use('/api/injuries', injuriesRoutes);
+app.use('/api/auth', authRoutes);
 
 // ---------------------------
 // Static frontend serving
 // ---------------------------
-// When the frontend is built (via `npm run build` in the `frontend` folder),
-// its optimised assets are output to `frontend/dist`.  In production we
-// serve those files directly from Express so that a single Node process can
-// handle both the API and the React app.  The order here matters: static
-// routes are defined after the API routes so that `/api/*` continues to
-// match first.  Any non-API request will fall through to this static
-// handler and ultimately serve the React `index.html` for client-side
-// routing.
+// Serve the built React app (frontend/dist) with Express.  This allows
+// deployment of a single Node process that handles both the API and
+// client‑side routes.  The catch‑all route below ensures that any
+// non‑API path will return `index.html` to enable React Router.
 const distDir = path.join(__dirname, 'frontend', 'dist');
-// Serve static files (JS, CSS, images, etc.)
 app.use(express.static(distDir));
-// For any route not handled by the above (i.e. not starting with /api),
-// return the HTML entry point.  The catch-all must come after
-// express.static so that existing static files are served correctly.
-//
-// We use a regular expression with a negative lookahead to exclude `/api`
-// endpoints from matching here.  This avoids issues where Express would
-// interpret a bare `*` path as an unnamed parameter, which triggers
-// a `Missing parameter name` error in path-to-regexp.  The regex
-// `^/(?!api).*` matches any path starting with a slash that does not
-// immediately follow with `api`.  Requests matching this pattern will
-// be served the React entry point to enable client-side routing.
+// Use a regex to match any path that does not start with /api.
 app.get(/^\/(?!api).*/, (req, res) => {
   res.sendFile(path.join(distDir, 'index.html'));
 });
@@ -84,21 +84,18 @@ if (!MONGO_URI) {
   process.exit(1);
 }
 
-// Connect to MongoDB
+// Connect to MongoDB and start the server
 mongoose.set('strictQuery', false);
 mongoose
   .connect(MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true })
   .then(async () => {
     console.log('Connected to MongoDB:', mongoose.connection.db.databaseName);
 
-    // Optionally run a full data sync at startup.  Set SYNC_ON_STARTUP=true in
-    // your .env file to enable.  The sync scripts run independently from the
-    // Express server and may take several minutes to complete.
+    // Optionally run a full data sync at startup
     if (process.env.SYNC_ON_STARTUP === 'true') {
       (async () => {
         console.log('🔄 Running initial data sync...');
         try {
-          // Sync scripts live in the `server/` folder; require them with the prefix.
           await require('./server/syncAllButStats');
           await require('./server/syncRemainingData');
           console.log('✅ Initial data sync complete');
@@ -108,9 +105,7 @@ mongoose
       })();
     }
 
-    // Schedule weekly data sync at 3 AM on Sundays by default.  You can
-    // override the schedule by setting SYNC_SCHEDULE to a valid cron
-    // expression (e.g., '0 3 * * 3' for Wednesday at 3 AM).
+    // Schedule weekly sync; default is 3 AM Sunday
     const schedule = process.env.SYNC_SCHEDULE || '0 3 * * 0';
     cron.schedule(schedule, async () => {
       console.log('🔄 Weekly data sync starting...');
@@ -123,7 +118,7 @@ mongoose
       }
     });
 
-    // Start notification service watchers (change streams or polling fallback)
+    // Start notification service
     try {
       await notificationService.start();
       console.log('Notification service started');
@@ -131,7 +126,7 @@ mongoose
       console.warn('Failed to start notification service', err && err.message ? err.message : err);
     }
 
-    // Start the Express server
+    // Start Express server
     app.listen(PORT, () => {
       console.log(`Server listening at http://localhost:${PORT}`);
     });
