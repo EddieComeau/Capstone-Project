@@ -401,6 +401,12 @@ async function syncStats(options = {}) {
         upsertCount += executed;
       }
     }
+    // inside syncStats(options)
+let cursor =
+options?.cursor ??
+options?.startCursor ??
+(process.env.STATS_START_CURSOR ? Number(process.env.STATS_START_CURSOR) : undefined);
+
     if (bulkOps.length > 0) {
       const { executed } = await flushBulkOpsForModel(bulkOps, Stat);
       upsertCount += executed;
