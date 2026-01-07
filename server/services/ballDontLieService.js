@@ -65,7 +65,22 @@ async function listPlays(params = {}) {
 
 /* Odds (game-level) */
 async function listOdds(params = {}) {
-  return bdlList('/nfl/v1/odds', params);
+  // The odds endpoint requires either (season + week) OR game_ids.
+  // Accept legacy callers that pass `game_id` and convert it automatically.
+  const p = { ...(params || {}) };
+
+  if (p.game_id != null && p.game_ids == null && !(p.season != null && p.week != null)) {
+    // Convert single game_id -> game_ids array
+    p.game_ids = Array.isArray(p.game_id) ? p.game_id : [p.game_id];
+    delete p.game_id;
+  }
+
+  // If game_ids is a single number, normalize to an array (arrays are known to work with our bdlList wrapper)
+  if (typeof p.game_ids === 'number') {
+    p.game_ids = [p.game_ids];
+  }
+
+  return bdlList('/nfl/v1/odds', p);
 }
 /* Player props (single-game) */
 async function listOddsPlayerProps(params = {}) {

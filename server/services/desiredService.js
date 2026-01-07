@@ -384,26 +384,100 @@ async function mergeAdvancedSourcesForSeason(entityType, season, scope = 'season
 }
 
 /* -------------------- computeStandings & computeMatchups (kept) ---------- */
-async function computeStandings() {
-  const seasons = await Game.distinct('season');
+/**
+ * Helper: best-effort numeric parsing.
+ */
+function asNumber(value) {
+  if (value == null) return null;
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+}
+
+function getGameScore(g, side) {
+  // side: 'home' | 'visitor'
+  const candidates =
+    side === 'home'
+      ? [
+          g?.score?.home,
+          g?.score?.home_score,
+          g?.score?.homeTeamScore,
+          g?.home_team_score,
+          g?.home_score,
+          g?.homeTeamScore,
+          g?.home_points,
+        ]
+      : [
+          g?.score?.visitor,
+          g?.score?.visitor_score,
+          g?.score?.visitorTeamScore,
+          g?.visitor_team_score,
+          g?.visitor_score,
+          g?.visitorTeamScore,
+          g?.visitor_points,
+        ];
+
+  for (const c of candidates) {
+    const n = asNumber(c);
+    if (n != null) return n;
+  }
+  return null;
+}
+
+function getGameTeamId(g, side) {
+  // side: 'home' | 'visitor'
+  const teamObj = side === 'home' ? g?.home_team : g?.visitor_team;
+  const candidates =
+    side === 'home'
+      ? [teamObj?.id, g?.home_team_id, g?.homeTeamId, g?.home_id]
+      : [teamObj?.id, g?.visitor_team_id, g?.visitorTeamId, g?.visitor_id];
+
+  for (const c of candidates) {
+    const n = asNumber(c);
+    if (n != null) return n;
+  }
+  return null;
+}
+
+/**
+ * Compute league standings from stored Game docs.
+ *
+ * Options:
+ * - seasons: number[] (optional) — if omitted, computes for all seasons in DB.
+ */
+async function computeStandings(options = {}) {
+  const seasons =
+    Array.isArray(options.seasons) && options.seasons.length > 0
+      ? options.seasons
+      : await Game.distinct('season');
+
   for (const season of seasons) {
     const games = await Game.find({ season }).lean();
     const byTeam = {};
+
     for (const g of games) {
-      const homeScore = g.score && g.score.home;
-      const visitorScore = g.score && g.score.visitor;
+      const homeScore = getGameScore(g, 'home');
+      const visitorScore = getGameScore(g, 'visitor');
       if (homeScore == null || visitorScore == null) continue;
-      const homeId = g.home_team && g.home_team.id;
-      const visitorId = g.visitor_team && g.visitor_team.id;
+
+      const homeId = getGameTeamId(g, 'home');
+      const visitorId = getGameTeamId(g, 'visitor');
       if (!homeId || !visitorId) continue;
+
       if (!byTeam[homeId]) byTeam[homeId] = { wins: 0, losses: 0, ties: 0, PF: 0, PA: 0, games: 0 };
       if (!byTeam[visitorId]) byTeam[visitorId] = { wins: 0, losses: 0, ties: 0, PF: 0, PA: 0, games: 0 };
+
       byTeam[homeId].PF += Number(homeScore);
       byTeam[homeId].PA += Number(visitorScore);
       byTeam[homeId].games++;
+
       byTeam[visitorId].PF += Number(visitorScore);
       byTeam[visitorId].PA += Number(homeScore);
       byTeam[visitorId].games++;
+
       if (homeScore > visitorScore) {
         byTeam[homeId].wins++;
         byTeam[visitorId].losses++;
@@ -415,6 +489,7 @@ async function computeStandings() {
         byTeam[visitorId].ties++;
       }
     }
+
     const ops = [];
     for (const [teamIdStr, data] of Object.entries(byTeam)) {
       const teamId = Number(teamIdStr);
@@ -425,6 +500,7 @@ async function computeStandings() {
       const PA = data.PA || 0;
       const total = wins + losses + ties;
       const winPct = total > 0 ? Number(((wins + ties * 0.5) / total).toFixed(3)) : 0;
+
       ops.push({
         updateOne: {
           filter: { teamId, season },
@@ -441,43 +517,60 @@ async function computeStandings() {
               raw: data,
               updatedAt: new Date(),
             },
+            $setOnInsert: { createdAt: new Date() },
           },
           upsert: true,
         },
       });
+
       if (ops.length >= BULK_BATCH_SIZE) {
         await Standing.bulkWrite(ops.splice(0, ops.length), { ordered: false });
       }
     }
+
     if (ops.length) await Standing.bulkWrite(ops, { ordered: false });
     console.log(`Standings computed for season ${season}`);
   }
 }
 
-async function computeMatchups() {
-  const gamesCursor = Game.find({}).cursor();
+/**
+ * Compute matchups for all stored games.
+ *
+ * Options:
+ * - seasons: number[] (optional) — if omitted, computes for all seasons in DB.
+ */
+async function computeMatchups(options = {}) {
+  const query =
+    Array.isArray(options.seasons) && options.seasons.length > 0 ? { season: { $in: options.seasons } } : {};
+
+  const gamesCursor = Game.find(query).cursor();
   for await (const g of gamesCursor) {
     // Determine BallDon'tLie game identifier; fallback to id or _id if needed
     const bdlGameId = g.gameId || g.id || g._id;
     const season = g.season;
     const week = g.week;
-    const homeTeamId = g.home_team && g.home_team.id;
-    const visitorTeamId = g.visitor_team && g.visitor_team.id;
+
+    const homeTeamId = getGameTeamId(g, 'home');
+    const visitorTeamId = getGameTeamId(g, 'visitor');
+
     const homeMetric = homeTeamId
       ? await AdvancedMetric.findOne({ entityType: 'team', entityId: homeTeamId, season, scope: 'season' }).lean()
       : null;
     const visitorMetric = visitorTeamId
       ? await AdvancedMetric.findOne({ entityType: 'team', entityId: visitorTeamId, season, scope: 'season' }).lean()
       : null;
+
     const keysToCompare = ['rushing_yards', 'receiving_yards', 'passing_yards', 'points', 'turnovers'];
     const homeMetricsObj = homeMetric && homeMetric.metrics ? homeMetric.metrics : {};
     const visitorMetricsObj = visitorMetric && visitorMetric.metrics ? visitorMetric.metrics : {};
+
     const comparison = {};
     for (const key of keysToCompare) {
       const h = Number(homeMetricsObj[key] || 0);
       const v = Number(visitorMetricsObj[key] || 0);
       comparison[key] = { home: h, visitor: v, diff: Number((h - v).toFixed(3)) };
     }
+
     // Use ballDontLieGameId as unique identifier; set both ballDontLieGameId and gameId for compatibility
     await Matchup.updateOne(
       { ballDontLieGameId: bdlGameId },
@@ -495,10 +588,23 @@ async function computeMatchups() {
           raw: g,
           updatedAt: new Date(),
         },
+        $setOnInsert: { createdAt: new Date() },
       },
       { upsert: true },
     );
   }
+}
+
+/**
+ * Backward-compat: older scripts referenced these names.
+ * They compute from MongoDB (downstream) rather than calling upstream.
+ */
+async function syncStandingsFromAPI(options = {}) {
+  return computeStandings(options);
+}
+
+async function syncMatchupsFromAPI(options = {}) {
+  return computeMatchups(options);
 }
 
 /* -------------------- Injuries: same as earlier -------------------- */
@@ -584,6 +690,9 @@ module.exports = {
   // other derived
   computeStandings,
   computeMatchups,
+  // backward-compat aliases
+  syncStandingsFromAPI,
+  syncMatchupsFromAPI,
   // injuries
   syncInjuriesFromAPI,
 };

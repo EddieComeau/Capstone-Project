@@ -410,9 +410,12 @@ async function fullSync({ seasons }) {
   }
   console.log('🚀 Starting full data sync for seasons:', seasons.join(', '));
   // Step 1: core entities (players, games, per‑game stats)
+  // NOTE: Keep games/stats scoped to the requested seasons to avoid syncing unwanted historical data.
   await syncPlayers({ per_page: PER_PAGE });
-  await syncGames({ per_page: PER_PAGE });
-  await syncStats({ per_page: PER_PAGE });
+  await syncGames({ per_page: PER_PAGE, seasons });
+  for (const season of seasons) {
+    await syncStats({ per_page: PER_PAGE, season });
+  }
   // Step 2: season aggregates
   await syncSeasonStats({ seasons });
   await syncTeamSeasonStats({ seasons });

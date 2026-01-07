@@ -63,9 +63,9 @@ const seasons = process.env.SYNC_SEASONS
       await desiredService.syncAdvancedStatsEndpoint("receiving", { season, per_page: 100 });
     }
 
-    // Compute derived standings and matchups (if your services do that)
-    await desiredService.syncStandingsFromAPI({ seasons });
-    await desiredService.syncMatchupsFromAPI({ seasons });
+    // Derived standings + matchups (downstream of games/stats)
+    await desiredService.computeStandings({ seasons });
+    await desiredService.computeMatchups({ seasons });
 
     // Play-by-play, odds, and player props for all games
     const games = await Game.find({ season: { $in: seasons } }).select("_id gameId").lean();
