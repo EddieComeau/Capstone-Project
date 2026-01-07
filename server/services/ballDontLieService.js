@@ -70,12 +70,10 @@ async function listOdds(params = {}) {
   const p = { ...(params || {}) };
 
   if (p.game_id != null && p.game_ids == null && !(p.season != null && p.week != null)) {
-    // Convert single game_id -> game_ids array
     p.game_ids = Array.isArray(p.game_id) ? p.game_id : [p.game_id];
     delete p.game_id;
   }
 
-  // If game_ids is a single number, normalize to an array (arrays are known to work with our bdlList wrapper)
   if (typeof p.game_ids === 'number') {
     p.game_ids = [p.game_ids];
   }

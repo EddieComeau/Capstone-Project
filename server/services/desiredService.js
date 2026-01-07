@@ -383,88 +383,160 @@ async function mergeAdvancedSourcesForSeason(entityType, season, scope = 'season
   }
 }
 
-/* -------------------- computeStandings & computeMatchups (kept) ---------- */
-/**
- * Helper: best-effort numeric parsing.
- */
-function asNumber(value) {
-  if (value == null) return null;
-  if (typeof value === 'number' && Number.isFinite(value)) return value;
-  if (typeof value === 'string') {
-    const n = Number(value);
-    return Number.isFinite(n) ? n : null;
-  }
-  return null;
-}
-
-function getGameScore(g, side) {
-  // side: 'home' | 'visitor'
-  const candidates =
-    side === 'home'
-      ? [
-          g?.score?.home,
-          g?.score?.home_score,
-          g?.score?.homeTeamScore,
-          g?.home_team_score,
-          g?.home_score,
-          g?.homeTeamScore,
-          g?.home_points,
-        ]
-      : [
-          g?.score?.visitor,
-          g?.score?.visitor_score,
-          g?.score?.visitorTeamScore,
-          g?.visitor_team_score,
-          g?.visitor_score,
-          g?.visitorTeamScore,
-          g?.visitor_points,
-        ];
-
-  for (const c of candidates) {
-    const n = asNumber(c);
-    if (n != null) return n;
-  }
-  return null;
-}
-
-function getGameTeamId(g, side) {
-  // side: 'home' | 'visitor'
-  const teamObj = side === 'home' ? g?.home_team : g?.visitor_team;
-  const candidates =
-    side === 'home'
-      ? [teamObj?.id, g?.home_team_id, g?.homeTeamId, g?.home_id]
-      : [teamObj?.id, g?.visitor_team_id, g?.visitorTeamId, g?.visitor_id];
-
-  for (const c of candidates) {
-    const n = asNumber(c);
-    if (n != null) return n;
-  }
-  return null;
-}
+/* -------------------- Standings & Matchups -------------------- */
 
 /**
- * Compute league standings from stored Game docs.
+ * Sync league standings from Ball Don't Lie into MongoDB.
  *
- * Options:
- * - seasons: number[] (optional) — if omitted, computes for all seasons in DB.
+ * Why this exists:
+ * - Your Game docs may not store final scores reliably (so local computation yields 0).
+ * - The BDL `/nfl/v1/standings` endpoint gives you canonical standings without
+ *   re-implementing NFL tie-break rules.
+ *
+ * options:
+ * - seasons: number[] (defaults to distinct seasons in Games)
+ * - per_page: number (default 100)
+ * - resume/persist: cursor persistence (default true)
+ */
+async function syncStandingsFromAPI(options = {}) {
+  const per_page = Number(options.per_page || 100);
+  const maxPages = Number(options.maxPages || 50);
+  const resume = options.resume !== false;
+  const persist = options.persist !== false;
+
+  const seasons =
+    Array.isArray(options.seasons) && options.seasons.length > 0 ? options.seasons : await Game.distinct('season');
+
+  for (const season of seasons) {
+    console.log(`🔁 syncStandingsFromAPI: season ${season}`);
+    const key = `standings_season_${season}`;
+    let cursor = resume ? (await getSyncCursor(key)) : options.cursor || null;
+    let page = 0;
+    let fetched = 0;
+
+    while (page < maxPages) {
+      page += 1;
+      const params = { per_page, season };
+      if (cursor) params.cursor = cursor;
+
+      const res = await ballDontLieService.listStandings(params);
+      const items = res && res.data ? res.data : [];
+      const meta = res && res.meta ? res.meta : {};
+
+      fetched += items.length;
+
+      const ops = [];
+      for (const rec of items) {
+        const teamIdRaw = rec.team_id || rec.teamId || (rec.team && rec.team.id);
+        const teamId = teamIdRaw != null ? Number(teamIdRaw) : null;
+        if (!teamId) continue;
+
+        const wins = rec.wins ?? rec.win ?? rec.w ?? (rec.record && rec.record.wins) ?? 0;
+        const losses = rec.losses ?? rec.loss ?? rec.l ?? (rec.record && rec.record.losses) ?? 0;
+        const ties = rec.ties ?? rec.t ?? (rec.record && rec.record.ties) ?? 0;
+
+        const pointsFor =
+          rec.points_for ?? rec.pointsFor ?? rec.pf ?? rec.points_for_total ?? rec.pointsScored ?? null;
+        const pointsAgainst =
+          rec.points_against ?? rec.pointsAgainst ?? rec.pa ?? rec.points_against_total ?? rec.pointsAllowed ?? null;
+
+        const total = Number(wins) + Number(losses) + Number(ties);
+        const winPct =
+          rec.win_pct ?? rec.winPct ?? (total > 0 ? Number(((Number(wins) + Number(ties) * 0.5) / total).toFixed(3)) : 0);
+
+        ops.push({
+          updateOne: {
+            filter: { teamId, season },
+            update: {
+              $set: {
+                teamId,
+                season,
+                wins: Number(wins) || 0,
+                losses: Number(losses) || 0,
+                ties: Number(ties) || 0,
+                pointsFor: pointsFor == null ? undefined : Number(pointsFor),
+                pointsAgainst: pointsAgainst == null ? undefined : Number(pointsAgainst),
+                winPct: Number(winPct) || 0,
+                raw: rec,
+                updatedAt: new Date(),
+              },
+              $setOnInsert: { createdAt: new Date() },
+            },
+            upsert: true,
+          },
+        });
+      }
+
+      if (ops.length) {
+        await Standing.bulkWrite(ops, { ordered: false });
+      }
+
+      const nextCursor = meta.next_cursor || meta.nextCursor || null;
+      if (persist) await setSyncCursor(key, nextCursor, meta);
+
+      // Standings usually return in one page; stop when pagination ends.
+      if (!nextCursor || items.length === 0) break;
+      cursor = nextCursor;
+    }
+
+    console.log(`✅ syncStandingsFromAPI complete for season ${season} — fetched ${fetched}`);
+  }
+}
+
+/**
+ * Compute *simple* standings from stored Game docs.
+ *
+ * Notes:
+ * - Requires final scores to be present in your Game docs.
+ * - Does NOT implement full NFL tie-break rules (division/conference seeding).
+ * - If scores are missing, you should use syncStandingsFromAPI instead.
+ *
+ * options:
+ * - seasons: number[] (defaults to distinct seasons in Games)
+ * - fallbackToAPI: boolean (default true) if no scored games found for a season
  */
 async function computeStandings(options = {}) {
   const seasons =
-    Array.isArray(options.seasons) && options.seasons.length > 0
-      ? options.seasons
-      : await Game.distinct('season');
+    Array.isArray(options.seasons) && options.seasons.length > 0 ? options.seasons : await Game.distinct('season');
+
+  const fallbackToAPI = options.fallbackToAPI !== false;
 
   for (const season of seasons) {
     const games = await Game.find({ season }).lean();
+
+    // Track whether we saw *any* scored games; if not, local compute can't do anything.
+    let sawScoredGame = false;
+
     const byTeam = {};
-
     for (const g of games) {
-      const homeScore = getGameScore(g, 'home');
-      const visitorScore = getGameScore(g, 'visitor');
-      if (homeScore == null || visitorScore == null) continue;
+      const homeScore =
+        (g.score && (g.score.home ?? g.score.home_team ?? g.score.homeTeam ?? g.score.home_score)) ??
+        g.home_team_score ??
+        g.homeTeamScore ??
+        g.home_score ??
+        null;
 
-      const homeId = getGameTeamId(g, 'home');
-      const visitorId = getGameTeamId(g, 'visitor');
+      const visitorScore =
+        (g.score && (g.score.visitor ?? g.score.away ?? g.score.visitor_team ?? g.score.visitorTeam ?? g.score.away_score)) ??
+        g.visitor_team_score ??
+        g.visitorTeamScore ??
+        g.away_team_score ??
+        g.awayTeamScore ??
+        null;
+
+      if (homeScore == null || visitorScore == null) continue;
+      sawScoredGame = true;
+
+      const homeId =
+        (g.home_team && g.home_team.id) ?? g.home_team_id ?? g.homeTeamId ?? (g.homeTeam && g.homeTeam.id) ?? null;
+      const visitorId =
+        (g.visitor_team && g.visitor_team.id) ??
+        g.visitor_team_id ??
+        g.visitorTeamId ??
+        g.away_team_id ??
+        (g.visitorTeam && g.visitorTeam.id) ??
+        null;
+
       if (!homeId || !visitorId) continue;
 
       if (!byTeam[homeId]) byTeam[homeId] = { wins: 0, losses: 0, ties: 0, PF: 0, PA: 0, games: 0 };
@@ -478,16 +550,25 @@ async function computeStandings(options = {}) {
       byTeam[visitorId].PA += Number(homeScore);
       byTeam[visitorId].games++;
 
-      if (homeScore > visitorScore) {
+      if (Number(homeScore) > Number(visitorScore)) {
         byTeam[homeId].wins++;
         byTeam[visitorId].losses++;
-      } else if (homeScore < visitorScore) {
+      } else if (Number(homeScore) < Number(visitorScore)) {
         byTeam[visitorId].wins++;
         byTeam[homeId].losses++;
       } else {
         byTeam[homeId].ties++;
         byTeam[visitorId].ties++;
       }
+    }
+
+    if (!sawScoredGame) {
+      console.warn(`⚠️ computeStandings: no scored games found for season ${season}.`);
+      if (fallbackToAPI) {
+        console.warn(`↪ Falling back to syncStandingsFromAPI for season ${season}.`);
+        await syncStandingsFromAPI({ seasons: [season] });
+      }
+      continue;
     }
 
     const ops = [];
@@ -529,19 +610,21 @@ async function computeStandings(options = {}) {
     }
 
     if (ops.length) await Standing.bulkWrite(ops, { ordered: false });
-    console.log(`Standings computed for season ${season}`);
+    console.log(`✅ Standings computed for season ${season}`);
   }
 }
 
 /**
- * Compute matchups for all stored games.
+ * Compute matchups documents from Games + team AdvancedMetric docs.
  *
- * Options:
- * - seasons: number[] (optional) — if omitted, computes for all seasons in DB.
+ * options:
+ * - seasons: number[] (optional) limit to seasons
  */
 async function computeMatchups(options = {}) {
-  const query =
-    Array.isArray(options.seasons) && options.seasons.length > 0 ? { season: { $in: options.seasons } } : {};
+  const query = {};
+  if (Array.isArray(options.seasons) && options.seasons.length > 0) {
+    query.season = { $in: options.seasons };
+  }
 
   const gamesCursor = Game.find(query).cursor();
   for await (const g of gamesCursor) {
@@ -549,9 +632,8 @@ async function computeMatchups(options = {}) {
     const bdlGameId = g.gameId || g.id || g._id;
     const season = g.season;
     const week = g.week;
-
-    const homeTeamId = getGameTeamId(g, 'home');
-    const visitorTeamId = getGameTeamId(g, 'visitor');
+    const homeTeamId = g.home_team && g.home_team.id;
+    const visitorTeamId = g.visitor_team && g.visitor_team.id;
 
     const homeMetric = homeTeamId
       ? await AdvancedMetric.findOne({ entityType: 'team', entityId: homeTeamId, season, scope: 'season' }).lean()
@@ -588,7 +670,6 @@ async function computeMatchups(options = {}) {
           raw: g,
           updatedAt: new Date(),
         },
-        $setOnInsert: { createdAt: new Date() },
       },
       { upsert: true },
     );
@@ -596,13 +677,9 @@ async function computeMatchups(options = {}) {
 }
 
 /**
- * Backward-compat: older scripts referenced these names.
- * They compute from MongoDB (downstream) rather than calling upstream.
+ * Compatibility wrapper: some scripts still call `syncMatchupsFromAPI`.
+ * Matchups are computed from Mongo in this project (there is no BDL matchups endpoint).
  */
-async function syncStandingsFromAPI(options = {}) {
-  return computeStandings(options);
-}
-
 async function syncMatchupsFromAPI(options = {}) {
   return computeMatchups(options);
 }
@@ -681,18 +758,21 @@ async function syncInjuriesFromAPI(options = {}) {
 module.exports = {
   // BDL advanced & season sync
   syncAdvancedStatsEndpoint,
-  // computed
+
+  // computed metrics
   computeAdvancedStats,
   computeSpecificMetricsForPlayerSeason,
   computeSpecificMetricsForTeamSeason,
   mergeAdvancedSources,
   mergeAdvancedSourcesForSeason,
-  // other derived
-  computeStandings,
-  computeMatchups,
-  // backward-compat aliases
+  mergeAdvancedSources,
+
+  // standings & matchups
   syncStandingsFromAPI,
+  computeStandings,
   syncMatchupsFromAPI,
+  computeMatchups,
+
   // injuries
   syncInjuriesFromAPI,
 };
