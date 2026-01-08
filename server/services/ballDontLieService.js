@@ -1,5 +1,10 @@
 // server/services/ballDontLieService.js
 // Thin wrappers for Ball Don't Lie NFL endpoints, all delegating to bdlList.
+//
+// NOTE (important fix):
+// - The /nfl/v1/odds endpoint does NOT accept `game_id`.
+//   It requires either (season & week) OR `game_ids` (array).
+//   We normalize `game_id` → `game_ids:[game_id]` so callers don’t accidentally 400.
 
 const { bdlList } = require('../utils/apiUtils');
 
@@ -65,21 +70,22 @@ async function listPlays(params = {}) {
 
 /* Odds (game-level) */
 async function listOdds(params = {}) {
-  // The odds endpoint requires either (season + week) OR game_ids.
-  // Accept legacy callers that pass `game_id` and convert it automatically.
   const p = { ...(params || {}) };
 
-  if (p.game_id != null && p.game_ids == null && !(p.season != null && p.week != null)) {
-    p.game_ids = Array.isArray(p.game_id) ? p.game_id : [p.game_id];
+  // Normalize: game_id -> game_ids
+  if (p.game_id != null && (p.game_ids == null || (Array.isArray(p.game_ids) && p.game_ids.length === 0))) {
+    p.game_ids = [p.game_id];
     delete p.game_id;
   }
 
-  if (typeof p.game_ids === 'number') {
+  // If someone passes a single number in game_ids, coerce to array
+  if (p.game_ids != null && !Array.isArray(p.game_ids)) {
     p.game_ids = [p.game_ids];
   }
 
   return bdlList('/nfl/v1/odds', p);
 }
+
 /* Player props (single-game) */
 async function listOddsPlayerProps(params = {}) {
   return bdlList('/nfl/v1/odds/player_props', params);

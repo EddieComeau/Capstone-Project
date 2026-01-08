@@ -237,47 +237,60 @@ async function syncPlaysForGames({ gameIds }) {
   if (!Array.isArray(gameIds) || gameIds.length === 0) {
     throw new Error('syncPlaysForGames: gameIds array is required');
   }
+
   for (const gameId of gameIds) {
     console.log(`🔁 syncPlays: game ${gameId}`);
-    let cursor = null;
-    let page = 0;
-    while (true) {
-      page += 1;
-      const params = { per_page: 100, game_id: gameId };
-      if (cursor) params.cursor = cursor;
-      const res = await ballDontLieService.listPlays(params);
-      const items = res && res.data ? res.data : [];
-      const meta = res && res.meta ? res.meta : {};
-      const ops = [];
-      for (const rec of items) {
-        const playId = rec.id || rec.play_id || rec.playId;
-        const seq = rec.sequence || rec.seq || null;
-        const clock = rec.clock || null;
-        const desc = rec.description || rec.desc || '';
-        ops.push({
-          updateOne: {
-            filter: { playId },
-            update: {
-              $set: {
-                playId,
-                gameId,
-                sequence: seq,
-                clock,
-                description: desc,
-                raw: rec,
-                updatedAt: new Date(),
+    try {
+      let cursor = null;
+
+      while (true) {
+        const params = { per_page: 100, game_id: gameId };
+        if (cursor) params.cursor = cursor;
+
+        const res = await ballDontLieService.listPlays(params);
+        const items = res && res.data ? res.data : [];
+        const meta = res && res.meta ? res.meta : {};
+
+        const ops = [];
+        for (const rec of items) {
+          const playId = rec.id || rec.play_id || rec.playId;
+          if (!playId) continue;
+
+          ops.push({
+            updateOne: {
+              filter: { playId },
+              update: {
+                $set: {
+                  playId,
+                  gameId,
+                  sequence: rec.sequence || rec.seq || null,
+                  clock: rec.clock || null,
+                  description: rec.description || rec.desc || '',
+                  raw: rec,
+                  updatedAt: new Date(),
+                },
+                $setOnInsert: { createdAt: new Date() },
               },
-              $setOnInsert: { createdAt: new Date() },
+              upsert: true,
             },
-            upsert: true,
-          },
-        });
+          });
+        }
+
+        if (ops.length) await Play.bulkWrite(ops, { ordered: false });
+
+        cursor = meta.next_cursor || meta.nextCursor || null;
+        if (!cursor || items.length === 0) break;
       }
-      if (ops.length) await Play.bulkWrite(ops, { ordered: false });
-      cursor = meta.next_cursor || meta.nextCursor || null;
-      if (!cursor || items.length === 0) break;
+    } catch (err) {
+      console.warn(
+        `⚠️ syncPlays failed for game ${gameId}:`,
+        err?.response?.status || '',
+        err?.message || err
+      );
+      continue;
     }
   }
+
   console.log('✅ syncPlaysForGames complete');
 }
 
@@ -293,43 +306,59 @@ async function syncOddsForGames({ gameIds }) {
   if (!Array.isArray(gameIds) || gameIds.length === 0) {
     throw new Error('syncOddsForGames: gameIds array is required');
   }
+
   for (const gameId of gameIds) {
     console.log(`🔁 syncOdds: game ${gameId}`);
-    let cursor = null;
-    let page = 0;
-    while (true) {
-      page += 1;
-      const params = { per_page: 100, game_ids: [gameId] };
-      if (cursor) params.cursor = cursor;
-      const res = await ballDontLieService.listOdds(params);
-      const items = res && res.data ? res.data : [];
-      const meta = res && res.meta ? res.meta : {};
-      const ops = [];
-      for (const rec of items) {
-        const gId = rec.game_id || gameId;
-        const vendor = rec.vendor || (rec.market && rec.market.vendor) || 'unknown';
-        ops.push({
-          updateOne: {
-            filter: { gameId: gId, vendor },
-            update: {
-              $set: {
-                gameId: gId,
-                vendor,
-                payload: rec,
-                raw: rec,
-                updatedAt: new Date(),
+    try {
+      let cursor = null;
+
+      while (true) {
+        const params = { per_page: 100, game_ids: [gameId] };
+        if (cursor) params.cursor = cursor;
+
+        const res = await ballDontLieService.listOdds(params);
+        const items = res && res.data ? res.data : [];
+        const meta = res && res.meta ? res.meta : {};
+
+        const ops = [];
+        for (const rec of items) {
+          const gId = rec.game_id || gameId;
+          const vendor = rec.vendor || (rec.market && rec.market.vendor) || 'unknown';
+
+          ops.push({
+            updateOne: {
+              filter: { gameId: gId, vendor },
+              update: {
+                $set: {
+                  gameId: gId,
+                  vendor,
+                  payload: rec,
+                  raw: rec,
+                  updatedAt: new Date(),
+                },
+                $setOnInsert: { createdAt: new Date() },
               },
-              $setOnInsert: { createdAt: new Date() },
+              upsert: true,
             },
-            upsert: true,
-          },
-        });
+          });
+        }
+
+        if (ops.length) await Odds.bulkWrite(ops, { ordered: false });
+
+        cursor = meta.next_cursor || meta.nextCursor || null;
+        if (!cursor || items.length === 0) break;
       }
-      if (ops.length) await Odds.bulkWrite(ops, { ordered: false });
-      cursor = meta.next_cursor || meta.nextCursor || null;
-      if (!cursor || items.length === 0) break;
+    } catch (err) {
+      console.warn(
+        `⚠️ syncOdds failed for game ${gameId}:`,
+        err?.response?.status || '',
+        err?.response?.data || '',
+        err?.message || err
+      );
+      continue;
     }
   }
+
   console.log('✅ syncOddsForGames complete');
 }
 
@@ -346,48 +375,65 @@ async function syncPlayerPropsForGames({ gameIds }) {
   if (!Array.isArray(gameIds) || gameIds.length === 0) {
     throw new Error('syncPlayerPropsForGames: gameIds array is required');
   }
+
   for (const gameId of gameIds) {
     console.log(`🔁 syncPlayerProps: game ${gameId}`);
-    let cursor = null;
-    let page = 0;
-    while (true) {
-      page += 1;
-      const params = { per_page: 100, game_id: gameId };
-      if (cursor) params.cursor = cursor;
-      const res = await ballDontLieService.listOddsPlayerProps(params);
-      const items = res && res.data ? res.data : [];
-      const meta = res && res.meta ? res.meta : {};
-      const ops = [];
-      for (const rec of items) {
-        const gId = rec.game_id || gameId;
-        const playerId = rec.player_id || (rec.player && rec.player.id);
-        const vendor = rec.vendor || 'unknown';
-        const propType = rec.prop_type || rec.propType || 'unknown';
-        ops.push({
-          updateOne: {
-            filter: { gameId: gId, playerId, vendor, prop_type: propType },
-            update: {
-              $set: {
-                gameId: gId,
-                playerId,
-                vendor,
-                prop_type: propType,
-                value: rec.line_value || rec.value || null,
-                payload: rec,
-                raw: rec,
-                updatedAt: new Date(),
+    try {
+      let cursor = null;
+
+      while (true) {
+        const params = { per_page: 100, game_id: gameId };
+        if (cursor) params.cursor = cursor;
+
+        const res = await ballDontLieService.listOddsPlayerProps(params);
+        const items = res && res.data ? res.data : [];
+        const meta = res && res.meta ? res.meta : {};
+
+        const ops = [];
+        for (const rec of items) {
+          const gId = rec.game_id || gameId;
+          const playerId = rec.player_id || (rec.player && rec.player.id);
+          if (!playerId) continue;
+
+          const vendor = rec.vendor || 'unknown';
+          const propType = rec.prop_type || rec.propType || 'unknown';
+
+          ops.push({
+            updateOne: {
+              filter: { gameId: gId, playerId, vendor, prop_type: propType },
+              update: {
+                $set: {
+                  gameId: gId,
+                  playerId,
+                  vendor,
+                  prop_type: propType,
+                  value: rec.line_value || rec.value || null,
+                  payload: rec,
+                  raw: rec,
+                  updatedAt: new Date(),
+                },
+                $setOnInsert: { createdAt: new Date() },
               },
-              $setOnInsert: { createdAt: new Date() },
+              upsert: true,
             },
-            upsert: true,
-          },
-        });
+          });
+        }
+
+        if (ops.length) await PlayerProp.bulkWrite(ops, { ordered: false });
+
+        cursor = meta.next_cursor || meta.nextCursor || null;
+        if (!cursor || items.length === 0) break;
       }
-      if (ops.length) await PlayerProp.bulkWrite(ops, { ordered: false });
-      cursor = meta.next_cursor || meta.nextCursor || null;
-      if (!cursor || items.length === 0) break;
+    } catch (err) {
+      console.warn(
+        `⚠️ syncPlayerProps failed for game ${gameId}:`,
+        err?.response?.status || '',
+        err?.message || err
+      );
+      continue;
     }
   }
+
   console.log('✅ syncPlayerPropsForGames complete');
 }
 
@@ -410,12 +456,9 @@ async function fullSync({ seasons }) {
   }
   console.log('🚀 Starting full data sync for seasons:', seasons.join(', '));
   // Step 1: core entities (players, games, per‑game stats)
-  // NOTE: Keep games/stats scoped to the requested seasons to avoid syncing unwanted historical data.
   await syncPlayers({ per_page: PER_PAGE });
-  await syncGames({ per_page: PER_PAGE, seasons });
-  for (const season of seasons) {
-    await syncStats({ per_page: PER_PAGE, season });
-  }
+  await syncGames({ per_page: PER_PAGE });
+  await syncStats({ per_page: PER_PAGE });
   // Step 2: season aggregates
   await syncSeasonStats({ seasons });
   await syncTeamSeasonStats({ seasons });

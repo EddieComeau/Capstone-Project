@@ -1,18 +1,31 @@
 /*
- * Script to synchronize all NFL data sets from Ball Don't Lie for the current
- * and previous seasons.  This script connects to MongoDB, fetches teams,
- * players, games, per-game player stats, season aggregates, team stats,
- * advanced metrics, play-by-play, odds, player props, and injuries.  It
- * then computes derived standings and matchups.  The seasons to sync are
- * determined dynamically based on the current year or via the SYNC_SEASONS
- * environment variable (comma-separated list).
+ * server/syncAllButStats.js  (CORE / STABLE)
+ *
+ * Goal:
+ * - Keep this script "boring and reliable": it should finish successfully
+ *   and populate the collections your app can safely depend on.
+ *
+ * What it syncs (stable):
+ * - teams
+ * - players
+ * - games (for selected seasons)
+ * - per-game player stats (for selected seasons)
+ * - season_stats (player season totals)
+ * - team_season_stats
+ * - team_stats
+ * - standings (from BallDontLie standings endpoint → MongoDB)
+ * - matchups (computed from Mongo Games; uses team metrics if present)
+ * - injuries
+ *
+ * What it DOES NOT do (moved to other scripts):
+ * - advanced player metrics ingestion (advanced_stats/*)  → use syncProblemData.js
+ * - full plays backfill / odds backfill / props backfill  → use syncProblemData.js
+ * - live plays polling                                 → use syncRemainingLiveData.js
  */
 
 // 🔒 Load root .env no matter where script is run from
 const path = require("path");
-require("dotenv").config({
-  path: path.join(__dirname, "..", ".env"),
-});
+require("dotenv").config({ path: path.join(__dirname, "..", ".env") });
 
 const mongoose = require("mongoose");
 const connectDB = require("./db");
@@ -20,67 +33,66 @@ const connectDB = require("./db");
 const { syncPlayers, syncGames, syncTeams, syncStats } = require("./services/syncService");
 const fullSyncService = require("./services/fullSyncService");
 const desiredService = require("./services/desiredService");
-const Game = require("./models/Game");
 
-// Determine the seasons to sync. If SYNC_SEASONS is provided in the
-// environment (comma-separated list), it will be used. Otherwise, use
-// the current year and the previous year as defaults.
+// Determine seasons (default: current year + previous year)
 function getDefaultSeasons() {
   const currentYear = new Date().getFullYear();
   return [currentYear, currentYear - 1];
 }
 
 const seasons = process.env.SYNC_SEASONS
-  ? process.env.SYNC_SEASONS.split(",")
+  ? process.env.SYNC_SEASONS
+      .split(",")
       .map((s) => Number(s.trim()))
-      .filter((n) => !Number.isNaN(n))
+      .filter((n) => Number.isFinite(n))
   : getDefaultSeasons();
+
+function envTrue(name, defaultValue = true) {
+  const v = process.env[name];
+  if (v == null) return defaultValue;
+  return String(v).toLowerCase() === "true";
+}
 
 (async () => {
   try {
     await connectDB();
-    console.log("🔁 Starting full sync for seasons:", seasons.join(", "));
+    console.log("🔁 CORE sync starting — seasons:", seasons.join(", "));
 
-    // Teams, players, and games are needed before syncing stats.
+    // 1) Base entities (downstream foundations)
     await syncTeams();
     await syncPlayers();
     await syncGames({ seasons });
 
-    // Per-game player stats for each season
+    // 2) Per-game player stats (big, but stable)
     for (const season of seasons) {
       await syncStats({ per_page: 100, season });
     }
 
-    // Season and team aggregates
-    await fullSyncService.syncSeasonStats({ seasons });
-    await fullSyncService.syncTeamSeasonStats({ seasons });
-    await fullSyncService.syncTeamStats({ seasons });
-
-    // Advanced rushing, passing, and receiving stats for each season
-    for (const season of seasons) {
-      await desiredService.syncAdvancedStatsEndpoint("rushing", { season, per_page: 100 });
-      await desiredService.syncAdvancedStatsEndpoint("passing", { season, per_page: 100 });
-      await desiredService.syncAdvancedStatsEndpoint("receiving", { season, per_page: 100 });
+    // 3) Aggregates (season/team layers)
+    if (envTrue("CORE_SYNC_AGGREGATES", true)) {
+      await fullSyncService.syncSeasonStats({ seasons });
+      await fullSyncService.syncTeamSeasonStats({ seasons });
+      await fullSyncService.syncTeamStats({ seasons });
     }
 
-    // Derived standings + matchups (downstream of games/stats)
-    await desiredService.computeStandings({ seasons });
-    await desiredService.computeMatchups({ seasons });
+    // 4) Standings (use BDL endpoint; avoids needing game scores in Mongo)
+    if (envTrue("CORE_SYNC_STANDINGS", true)) {
+      await desiredService.syncStandingsFromAPI({ seasons });
+    }
 
-    // Play-by-play, odds, and player props for all games
-    const games = await Game.find({ season: { $in: seasons } }).select("_id gameId").lean();
-    const gameIds = games.map((g) => g.gameId).filter(Boolean);
+    // 5) Matchups (computed from Mongo Games; metrics optional)
+    if (envTrue("CORE_SYNC_MATCHUPS", true)) {
+      await desiredService.computeMatchups({ seasons });
+    }
 
-    await fullSyncService.syncPlaysForGames({ gameIds });
-    await fullSyncService.syncOddsForGames({ gameIds });
-    await fullSyncService.syncPlayerPropsForGames({ gameIds });
+    // 6) Injuries
+    if (envTrue("CORE_SYNC_INJURIES", true)) {
+      await desiredService.syncInjuriesFromAPI({ per_page: 100 });
+    }
 
-    // Injuries
-    await desiredService.syncInjuriesFromAPI({ per_page: 100 });
-
-    console.log("🎉 Finished syncing all endpoints (including per-game player stats)");
+    console.log("🎉 CORE sync complete");
   } catch (err) {
-    console.error("❌ syncAllButStats failed:", err);
+    console.error("❌ syncAllButStats (CORE) failed:", err);
     process.exitCode = 1;
   } finally {
     try {
