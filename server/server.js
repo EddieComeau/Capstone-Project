@@ -26,7 +26,7 @@ mongoose.connect(MONGO_URI).then(() => {
   process.exit(1);
 });
 
-// 🔧 Dynamic route loader
+// Optional route loader helper
 function tryLoadRoute(relativePath) {
   try {
     const mod = require(relativePath);
@@ -38,34 +38,33 @@ function tryLoadRoute(relativePath) {
   return null;
 }
 
-// Routes (corrected to local `./routes/`)
+// ✅ Actual working route files from your latest GitHub push:
 const routes = {
   metrics: tryLoadRoute("./routes/metricsRoutes"),
   notifications: tryLoadRoute("./routes/notificationRoutes"),
-  teams: tryLoadRoute("./routes/teamsRoutes"),
-  players: tryLoadRoute("./routes/playersRoutes"),
-  matchups: tryLoadRoute("./routes/matchupsRoutes"),
-  games: tryLoadRoute("./routes/gamesRoutes"),
-  standings: tryLoadRoute("./routes/standingsRoutes"),
-  playbyplay: tryLoadRoute("./routes/playByPlayRoutes"),
-  boxscores: tryLoadRoute("./routes/boxscoresRoutes"),
-  cards: tryLoadRoute("./routes/cardsRoutes"),
-  roster: tryLoadRoute("./routes/rosterRoutes"),
-  injuries: tryLoadRoute("./routes/injuriesRoutes"),
-  auth: tryLoadRoute("./routes/authRoutes"),
+  teams: tryLoadRoute("./routes/teams"),
+  players: tryLoadRoute("./routes/players"),
+  matchups: tryLoadRoute("./routes/matchups"),
+  games: tryLoadRoute("./routes/games"),
+  standings: tryLoadRoute("./routes/standings"),
+  playbyplay: tryLoadRoute("./routes/playByPlay"),
+  boxscores: tryLoadRoute("./routes/boxscores"),
+  cards: tryLoadRoute("./routes/cards"),
+  roster: tryLoadRoute("./routes/roster"),
+  injuries: tryLoadRoute("./routes/injuries"),
+  auth: tryLoadRoute("./routes/auth"),
   export: tryLoadRoute("./routes/exportRoutes"),
   syncstate: tryLoadRoute("./routes/syncStateRoutes")
 };
 
-// Mount routes
+// Health check routes
 app.get("/api/health", (_, res) => res.json({ ok: true, uptime: process.uptime() }));
 app.get("/api/_mounted", (_, res) => {
-  const mounts = app._router.stack
-    .filter(r => r.route)
-    .map(r => r.route.path);
+  const mounts = app._router.stack.filter(r => r.route).map(r => r.route.path);
   res.json({ ok: true, mounts });
 });
 
+// Mount all valid routes
 for (const [key, router] of Object.entries(routes)) {
   if (router) app.use(`/api/${key}`, router);
 }
