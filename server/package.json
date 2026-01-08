@@ -4,8 +4,8 @@
   "description": "NFL Cards backend — syncs BallDon'tLie NFL data (players, teams, games, stats, injuries, odds, plays) into MongoDB and computes derived metrics.",
   "main": "server.js",
   "scripts": {
-    "start": "node ../server.js",
-    "dev": "nodemon ../server.js",
+    "start": "node server.js",
+    "dev": "nodemon server.js",
     "health": "node -e \"console.log('ok')\"",
     "sync:players": "node scripts/testSync.js",
     "sync:teams": "node scripts/syncAllTeams.js",
