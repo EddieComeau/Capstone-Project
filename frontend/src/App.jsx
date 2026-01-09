@@ -19,7 +19,7 @@ export default function App() {
       <TopTabs />
       <main className="appMain">
         <Routes>
-        <Route path="/" element={<StartPage />} />
+          <Route path="/" element={<StartPage />} />
           <Route path="/start" element={<StartPage />} />
           <Route path="/home" element={<HomePage />} />
           <Route path="/cards" element={<PrototypePage />} />

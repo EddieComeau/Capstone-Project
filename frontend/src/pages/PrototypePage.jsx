@@ -1,24 +1,8 @@
-import React from "react";
+import { useState } from "react";
 import PlayerCard from "../components/cards/PlayerCard";
 import TeamCard from "../components/cards/TeamCard";
+import PlayerSearchInput from "../components/PlayerSearchInput";
 import "./PrototypePage.css";
-
-const players = [
-  {
-    id: "1",
-    name: "John Doe",
-    position: "QB",
-    team: "SF",
-    stats: { passingYards: 4000, touchdowns: 30 },
-  },
-  {
-    id: "2",
-    name: "Jane Smith",
-    position: "RB",
-    team: "SF",
-    stats: { rushingYards: 1200, touchdowns: 10 },
-  },
-];
 
 const teams = [
   {
@@ -34,27 +18,28 @@ const teams = [
 ];
 
 export default function PrototypePage() {
+  const [selectedPlayer, setSelectedPlayer] = useState(null);
+
   return (
     <div className="protoWrap">
       <header className="appHeader">
         <h1 className="appTitle">Cards Prototype</h1>
-        <p className="appSubtitle">Your existing templates page (moved to /cards)</p>
+        <p className="appSubtitle">Search for any player below</p>
+        <PlayerSearchInput onSelect={setSelectedPlayer} />
       </header>
 
       <div className="appContent">
         <section className="section">
-          <h2 className="sectionTitle">Player Cards</h2>
-          <p className="sectionDesc">Mock data for now; wire to BALLDONTLIE later.</p>
-          <div className="cardGrid">
-            {players.map((p) => (
-              <PlayerCard key={p.id} player={p} />
-            ))}
-          </div>
+          <h2 className="sectionTitle">Player Card</h2>
+          {selectedPlayer ? (
+            <PlayerCard player={{ name: selectedPlayer.full_name, team: selectedPlayer.team_abbr }} />
+          ) : (
+            <p>Search for a player to load a card.</p>
+          )}
         </section>
 
         <section className="section">
           <h2 className="sectionTitle">Team Cards</h2>
-          <p className="sectionDesc">Team summaries in the same visual language.</p>
           <div className="cardGrid">
             {teams.map((t) => (
               <TeamCard key={t.id} team={t} />

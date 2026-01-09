@@ -1,144 +1,146 @@
 import { useEffect, useState } from "react";
-import Lottie from "lottie-react";
-import "./BettingPage.css";
-
-const LOTTIE_SPARK = "/lottie/fx/touchdown.json";
-const AUDIO_CELEBRATE = "/sfx/touchdown.wav";
-
-const MOCK_LINES = [
-  {
-    matchup: "Hawks @ Meteors",
-    spread: "Meteors -6.5",
-    total: "O/U 46.5",
-    confidence: 78,
-    props: [
-      { label: "QB Pass TDs", value: "2.5 OVER", confidence: 74 },
-      { label: "RB Rush Yards", value: "69.5 OVER", confidence: 68 },
-    ],
-  },
-  {
-    matchup: "Stallions @ Armada",
-    spread: "Stallions -2.5",
-    total: "O/U 44.0",
-    confidence: 65,
-    props: [
-      { label: "WR Receptions", value: "5.5 OVER", confidence: 63 },
-      { label: "TE Red Zone Target", value: "Anytime TD", confidence: 58 },
-    ],
-  },
-];
+import PlayerSearchInput from "../components/PlayerSearchInput";
 
 export default function BettingPage() {
-  const [activeIndex, setActiveIndex] = useState(0);
-  const [soundReady, setSoundReady] = useState(false);
-  const [lottieData, setLottieData] = useState(null);
+  const [odds, setOdds] = useState([]);
+  const [props, setProps] = useState([]);
+  const [playerNameMap, setPlayerNameMap] = useState({});
+  const [loading, setLoading] = useState(false);
+  const [syncedAt, setSyncedAt] = useState(null);
+  const [selectedPlayer, setSelectedPlayer] = useState(null);
 
-  const active = MOCK_LINES[activeIndex];
+  const [filters, setFilters] = useState({
+    playerId: "",
+    gameId: "",
+    season: "",
+    week: "",
+  });
 
-  const [celebrate] = useState(() => new Audio(AUDIO_CELEBRATE));
+  function buildQuery(params) {
+    const qs = new URLSearchParams();
+    Object.entries(params).forEach(([k, v]) => {
+      if (v !== "" && v !== undefined && v !== null) {
+        qs.set(k, v);
+      }
+    });
+    return qs.toString();
+  }
+
+  async function fetchData() {
+    setLoading(true);
+    try {
+      const playerId = selectedPlayer?.player_id || filters.playerId;
+      const oddsQuery = buildQuery({ ...filters, playerId, limit: 25 });
+      const propsQuery = buildQuery({ ...filters, playerId, limit: 25 });
+
+      const [oddsRes, propsRes] = await Promise.all([
+        fetch(`/api/betting/odds?${oddsQuery}`),
+        fetch(`/api/betting/props?${propsQuery}`),
+      ]);
+
+      const [oddsJson, propsJson] = await Promise.all([
+        oddsRes.json(),
+        propsRes.json(),
+      ]);
+
+      setOdds(oddsJson.odds || []);
+      setProps(propsJson.props || []);
+
+      const timestamps = [...(propsJson.props || []), ...(oddsJson.odds || [])]
+        .map((x) => x.synced_at)
+        .filter(Boolean)
+        .sort()
+        .reverse();
+      if (timestamps.length) setSyncedAt(timestamps[0]);
+
+      // Load player names
+      const ids = new Set(props.map((p) => p.player_id));
+      const entries = [...ids].map(async (id) => {
+        const res = await fetch(`/api/players/${id}`);
+        const json = await res.json();
+        if (json.ok) return [id, json.player];
+        return [id, null];
+      });
+      const results = await Promise.all(entries);
+      setPlayerNameMap(Object.fromEntries(results));
+    } catch (e) {
+      console.error("Error loading betting data:", e);
+    } finally {
+      setLoading(false);
+    }
+  }
 
   useEffect(() => {
-    let alive = true;
-    fetch(LOTTIE_SPARK)
-      .then((r) => r.json())
-      .then((json) => alive && setLottieData(json))
-      .catch(() => setLottieData(null));
-
-    return () => {
-      alive = false;
-    };
+    fetchData();
   }, []);
 
-  const handleArmAudio = async () => {
-    try {
-      celebrate.volume = 0;
-      await celebrate.play();
-      celebrate.pause();
-      celebrate.currentTime = 0;
-      setSoundReady(true);
-    } catch (e) {
-      setSoundReady(false);
-    }
-  };
-
-  const triggerFx = async () => {
-    if (!soundReady) return;
-    try {
-      celebrate.currentTime = 0;
-      celebrate.volume = 0.8;
-      await celebrate.play();
-    } catch (e) {
-      // ignore autoplay issues
-    }
-  };
+  function updateFilter(field, value) {
+    setFilters((prev) => ({ ...prev, [field]: value }));
+  }
 
   return (
-    <div className="bettingWrap">
-      <header className="bettingHead">
-        <div>
-          <h1>Betting Odds & Props</h1>
-          <p>Fan-friendly odds view with a quick pop of celebration when you lock your picks.</p>
-        </div>
-        <div className="bettingControls">
-          <button type="button" className="armBtn" onClick={handleArmAudio}>
-            {soundReady ? "Audio armed" : "Arm celebratory sound"}
-          </button>
-        </div>
-      </header>
+    <div style={{ padding: 16 }}>
+      <h2>Betting Odds & Player Props</h2>
 
-      <div className="bettingCarousel">
-        <button
-          type="button"
-          className="navBtn"
-          onClick={() => setActiveIndex((i) => (i - 1 + MOCK_LINES.length) % MOCK_LINES.length)}
-        >
-          ◀
+      {/* Filters */}
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
+        <PlayerSearchInput
+          onSelect={(player) => {
+            setSelectedPlayer(player);
+            updateFilter("playerId", player.player_id);
+          }}
+        />
+        <input
+          placeholder="Game ID"
+          value={filters.gameId}
+          onChange={(e) => updateFilter("gameId", e.target.value)}
+        />
+        <input
+          placeholder="Season"
+          value={filters.season}
+          onChange={(e) => updateFilter("season", e.target.value)}
+        />
+        <input
+          placeholder="Week"
+          value={filters.week}
+          onChange={(e) => updateFilter("week", e.target.value)}
+        />
+        <button onClick={fetchData} disabled={loading}>
+          🔁 Refresh
         </button>
+      </div>
 
-          <div className="bettingCard">
-            <div className="bettingLottie">
-              {lottieData ? <Lottie animationData={lottieData} loop autoplay /> : null}
-            </div>
-          <div className="bettingMatchup">{active.matchup}</div>
-          <div className="bettingLine">
-            <div>
-              <div className="label">Spread</div>
-              <div className="value">{active.spread}</div>
-            </div>
-            <div>
-              <div className="label">Total</div>
-              <div className="value">{active.total}</div>
-            </div>
-            <div className="confidence">{active.confidence}% confidence</div>
-          </div>
+      {syncedAt && (
+        <p style={{ fontSize: 12, color: "#555" }}>
+          Last updated: {new Date(syncedAt).toLocaleString()}
+        </p>
+      )}
 
-          <div className="props">
-            {active.props.map((p) => (
-              <div key={p.label} className="propRow">
-                <div>
-                  <div className="label">{p.label}</div>
-                  <div className="value">{p.value}</div>
-                </div>
-                <div className="meter">
-                  <div className="meterFill" style={{ width: `${p.confidence}%` }} />
-                  <span className="meterValue">{p.confidence}%</span>
-                </div>
+      <h3>Player Props ({props.length})</h3>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+        {props.map((p, i) => {
+          const player = playerNameMap[p.player_id];
+          return (
+            <div
+              key={p._id || i}
+              style={{
+                border: "1px solid #ccc",
+                borderRadius: 8,
+                padding: 10,
+                width: 280,
+              }}
+            >
+              <div>
+                <b>{player ? `${player.full_name} (${player.team_abbr})` : `ID ${p.player_id}`}</b>
               </div>
-            ))}
-          </div>
-
-          <button className="lockBtn" type="button" onClick={triggerFx}>
-            Lock these recs
-          </button>
-        </div>
-
-        <button
-          type="button"
-          className="navBtn"
-          onClick={() => setActiveIndex((i) => (i + 1) % MOCK_LINES.length)}
-        >
-          ▶
-        </button>
+              <div>
+                Prop: {p.prop_type ?? p.market ?? p.stat_type ?? "Unknown"}
+              </div>
+              <div>Book: {p.sportsbook ?? p.book_key ?? "N/A"}</div>
+              <div>Line: {p.line ?? "N/A"}</div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

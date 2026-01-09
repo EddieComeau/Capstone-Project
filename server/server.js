@@ -1,70 +1,80 @@
-// server/server.js
-const path = require("path");
-const dotenv = require("dotenv");
-dotenv.config({ path: path.join(__dirname, ".env") });
-dotenv.config({ path: path.join(__dirname, "..", ".env") });
+// server.js
+//
+// Entry point for the Express API server. This file sets up
+// middleware, connects to MongoDB, mounts route handlers and starts
+// the HTTP server. The implementation closely mirrors the current
+// server.js in the Capstone project but includes an additional
+// `/api/betting` mount which exposes betting odds and props along
+// with an on‑demand sync endpoint.
 
-const express = require("express");
-const mongoose = require("mongoose");
-const morgan = require("morgan");
-const cors = require("cors");
+require('dotenv').config();
+
+const express = require('express');
+const morgan = require('morgan');
+const cors = require('cors');
+const mongoose = require('mongoose');
+const playerRoutes = require("./routes/players");
+app.use("/api/players", playerRoutes);
+
+// Route modules
+const metricsRoutes = require('./server/routes/metricsRoutes');
+let syncRoutes = null;
+try { syncRoutes = require('./server/routes/syncRoutes'); } catch (e) { console.warn('syncRoutes not found, skipping'); }
+const notificationRoutes = require('./server/routes/notificationRoutes');
+let bettingRoutes = null;
+try { bettingRoutes = require('./server/routes/betting'); } catch (e) { console.warn('bettingRoutes not found, skipping'); }
+
+const notificationService = require('./server/services/notificationService');
 
 const app = express();
-const PORT = process.env.PORT || 4000;
 
-// Middleware
-app.use(morgan("dev"));
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true }));
+app.use(morgan('dev'));
+app.use("/api/teams", teamsRoutes);
+app.use("/api/players", playerRoutes); // ✅ Add this if missing
+app.use("/api/betting", bettingRoutes);
 
-const MONGO_URI = process.env.MONGO_URI || "mongodb://localhost:27017/nfl_cards";
-mongoose.connect(MONGO_URI).then(() => {
-  console.log("Connected to MongoDB:", mongoose.connection.name);
-  app.listen(PORT, () => console.log(`Server listening at http://localhost:${PORT}`));
+app.get('/api/health', (req, res) => res.json({ ok: true, uptime: process.uptime() }));
+
+// Mount routers
+app.use('/api/metrics', metricsRoutes);
+if (syncRoutes) app.use('/api/sync', syncRoutes);
+app.use('/api/notifications', notificationRoutes);
+if (bettingRoutes) app.use('/api/betting', bettingRoutes);
+
+// Centralised error handler
+app.use((err, req, res, next) => {
+  console.error('Unhandled error:', err && err.stack ? err.stack : err);
+  res.status(err.status || 500).json({ ok: false, error: err.message || 'internal' });
+});
+
+const PORT = Number(process.env.PORT || 4000);
+const MONGO_URI = process.env.MONGO_URI;
+
+if (!MONGO_URI) {
+  console.error('MONGO_URI is not set');
+  process.exit(1);
+}
+
+// Connect to Mongo and start server
+mongoose.set('strictQuery', false);
+mongoose.connect(MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true }).then(async () => {
+  console.log('Connected to MongoDB:', mongoose.connection.db.databaseName);
+  // Start notification service watchers (change streams or polling fallback)
+  try {
+    await notificationService.start();
+    console.log('Notification service started');
+  } catch (err) {
+    console.warn('Failed to start notification service', err && err.message ? err.message : err);
+  }
+  app.listen(PORT, () => {
+    console.log(`Server listening at http://localhost:${PORT}`);
+  });
 }).catch(err => {
-  console.error("❌ Mongo connection failed:", err.message);
+  console.error('Mongo connect failed', err && err.message ? err.message : err);
   process.exit(1);
 });
 
-// Optional route loader helper
-function tryLoadRoute(relativePath) {
-  try {
-    const mod = require(relativePath);
-    if (typeof mod === "function") return mod;
-    console.warn(`⚠️ Skipping ${relativePath}: not an Express router`);
-  } catch (e) {
-    console.warn(`ℹ️ Optional route not loaded: ${relativePath} (${e.message})`);
-  }
-  return null;
-}
-
-// ✅ Actual working route files from your latest GitHub push:
-const routes = {
-  metrics: tryLoadRoute("./routes/metricsRoutes"),
-  notifications: tryLoadRoute("./routes/notificationRoutes"),
-  teams: tryLoadRoute("./routes/teams"),
-  players: tryLoadRoute("./routes/players"),
-  matchups: tryLoadRoute("./routes/matchups"),
-  games: tryLoadRoute("./routes/games"),
-  standings: tryLoadRoute("./routes/standings"),
-  playbyplay: tryLoadRoute("./routes/playByPlay"),
-  boxscores: tryLoadRoute("./routes/boxscores"),
-  cards: tryLoadRoute("./routes/cards"),
-  roster: tryLoadRoute("./routes/roster"),
-  injuries: tryLoadRoute("./routes/injuries"),
-  auth: tryLoadRoute("./routes/auth"),
-  export: tryLoadRoute("./routes/exportRoutes"),
-  syncstate: tryLoadRoute("./routes/syncStateRoutes")
-};
-
-// Health check routes
-app.get("/api/health", (_, res) => res.json({ ok: true, uptime: process.uptime() }));
-app.get("/api/_mounted", (_, res) => {
-  const mounts = app._router.stack.filter(r => r.route).map(r => r.route.path);
-  res.json({ ok: true, mounts });
-});
-
-// Mount all valid routes
-for (const [key, router] of Object.entries(routes)) {
-  if (router) app.use(`/api/${key}`, router);
-}
+module.exports = app;

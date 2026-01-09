@@ -1,4 +1,6 @@
 import { NavLink, useNavigate } from "react-router-dom";
+import PlayerSearchInput from "../components/PlayerSearchInput";
+import { useNavigate } from "react-router-dom";
 
 export default function TopTabs() {
   const navigate = useNavigate();

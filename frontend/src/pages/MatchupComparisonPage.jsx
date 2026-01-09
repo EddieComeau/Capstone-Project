@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import "./MatchupComparisonPage.css";
+import PlayerSearchInput from "../components/PlayerSearchInput";
 
 const PLAYER_OPTIONS = [
   { name: "Patrick Mahomes", team: "KC", position: "QB", grade: 96, yards: 4210, td: 37 },
@@ -41,8 +42,9 @@ function ScorePill({ label, value }) {
 
 export default function MatchupComparisonPage() {
   const [mode, setMode] = useState("players");
-  const [left, setLeft] = useState(PLAYER_OPTIONS[0].name);
-  const [right, setRight] = useState(PLAYER_OPTIONS[1].name);
+  const [left, setLeft] = useState(null);
+const [right, setRight] = useState(null);
+
 
   const leftEntity = useMemo(() => {
     if (mode === "players") return PLAYER_OPTIONS.find((p) => p.name === left);
@@ -111,9 +113,10 @@ export default function MatchupComparisonPage() {
       </header>
 
       <div className="matchSelectors">
-        <Selector label="Left" options={leftOptions} value={left} onChange={setLeft} />
-        <Selector label="Right" options={rightOptions} value={right} onChange={setRight} />
-      </div>
+  <PlayerSearchInput onSelect={setLeft} />
+  <PlayerSearchInput onSelect={setRight} />
+</div>
+
 
       <div className="matchGrid">
         <div className="matchCard">
