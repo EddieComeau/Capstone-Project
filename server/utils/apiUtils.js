@@ -1,13 +1,11 @@
-// server/utils/apiUtils.js
-
-const DEFAULT_BDL_BASE = 'https://api.balldontlie.io/nfl/v1';  // ✅ Correct NFL base
+const DEFAULT_BDL_BASE = 'https://api.balldontlie.io/nfl/v1';
 
 /**
- * Returns the base URL for BallDontLie API.
+ * Returns the base URL for the BallDon'tLie API.
  * Priority:
- * 1. BALLDONTLIE_NFL_BASE_URL – set this if you need a custom domain
- * 2. BALLDONTLIE_BASE_URL      – legacy fallback
- * 3. DEFAULT_BDL_BASE          – NFL API
+ *   1. BALLDONTLIE_NFL_BASE_URL – set this if you need a custom domain
+ *   2. BALLDONTLIE_BASE_URL      – legacy fallback
+ *   3. DEFAULT_BDL_BASE          – NFL API
  */
 function getBdlBaseUrl() {
   return process.env.BALLDONTLIE_NFL_BASE_URL ||

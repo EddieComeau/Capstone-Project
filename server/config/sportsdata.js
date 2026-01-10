@@ -1,9 +1,6 @@
-// config/sportsdata.js
 require("dotenv").config();
 
-// Backward compatible names:
-// - prefer BALLDONTLIE_*
-// - fall back to SPORTSDATA_* if you still have them set
+// Prefer BALLDONTLIE_* but support SPORTSDATA_* fallback
 const SPORTS_DATA_BASE_URL =
   process.env.BALLDONTLIE_NFL_BASE_URL ||
   process.env.SPORTSDATA_BASE_URL ||
