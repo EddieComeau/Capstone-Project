@@ -1,15 +1,11 @@
+// server/models/BettingProp.js
+
 const mongoose = require('mongoose');
 
 /*
- * BettingProp model
- *
- * Stores player proposition lines retrieved from the BallDontLie API.
- * Each document is uniquely identified by the combination of
- * game_id, player_id, vendor and prop. Additional fields capture
- * the line value and odds metadata returned by the API along with
- * a raw snapshot of the original payload for debugging.
+ * Stores player prop lines from the BallDontLie NFL API.
+ * Unique combination: game_id + player_id + vendor + prop.
  */
-
 const BettingPropSchema = new mongoose.Schema({
   game_id: { type: Number, required: true },
   player_id: { type: Number, required: true },
@@ -19,16 +15,15 @@ const BettingPropSchema = new mongoose.Schema({
   market_type: { type: String },
   over_odds: { type: Number },
   under_odds: { type: Number },
-  odds: { type: Number }, // milestone lines
+  odds: { type: Number },     // for milestone lines
   updated_at: { type: Date },
-  raw: { type: mongoose.Schema.Types.Mixed },
+  raw: { type: mongoose.Schema.Types.Mixed },  // store original API payload if needed
   synced_at: { type: Date, default: Date.now },
 }, {
   timestamps: true,
 });
 
-// Ensure uniqueness across game, player, vendor and prop to avoid
-// duplicates when upserting data repeatedly.
+// Create a compound index to avoid duplicates.
 BettingPropSchema.index({ game_id: 1, player_id: 1, vendor: 1, prop: 1 }, { unique: true });
 
 module.exports = mongoose.model('BettingProp', BettingPropSchema);

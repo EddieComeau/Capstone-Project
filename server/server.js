@@ -1,4 +1,4 @@
-// server.js
+// server/server.js
 
 require('dotenv').config();
 const express = require('express');
@@ -6,10 +6,7 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 
 const bettingRoutes = require('./routes/betting');
-// You can import more routes as needed:
-// const playerRoutes = require('./server/routes/players');
-// const teamRoutes = require('./server/routes/teams');
-// etc.
+// import additional routes here (players, teams, etc.) if you want to mount them
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -18,15 +15,14 @@ const MONGO_URI = process.env.MONGO_URI;
 app.use(cors());
 app.use(express.json());
 
-app.get('/api/health', (req, res) => {
+// Health check
+app.get('/api/health', (_, res) => {
   res.json({ ok: true, message: 'API is healthy 🚀' });
 });
 
-// ✅ Betting routes: /api/betting/props and /api/betting/odds
+// Betting routes
 app.use('/api/betting', bettingRoutes);
-
-// Mount additional routes here if needed
-// app.use('/api/players', playerRoutes);
+// mount other routes if needed, e.g. app.use('/api/players', playersRoutes)
 
 mongoose.connect(MONGO_URI, {
   useNewUrlParser: true,
