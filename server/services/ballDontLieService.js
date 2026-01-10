@@ -1,117 +1,77 @@
-// server/services/ballDontLieService.js
-// Thin wrappers for Ball Don't Lie NFL endpoints, all delegating to bdlList.
-//
-// NOTE (important fix):
-// - The /nfl/v1/odds endpoint does NOT accept `game_id`.
-//   It requires either (season & week) OR `game_ids` (array).
-//   We normalize `game_id` → `game_ids:[game_id]` so callers don’t accidentally 400.
+const axios = require('axios');
 
-const { bdlList } = require('../utils/apiUtils');
+/*
+ * ballDontLieService
+ *
+ * Thin client for the BallDontLie NFL API. Wraps axios to include the
+ * appropriate base URL and authorization header on all requests. The
+ * functions exposed here mirror the official API endpoints for odds
+ * and player prop lines. See https://api.balldontlie.io for more
+ * details on accepted query parameters.
+ */
 
-/* Player endpoints */
-async function listPlayers(params = {}) {
-  return bdlList('/nfl/v1/players', params);
-}
-async function getPlayer(id) {
-  if (!id) throw new Error('Missing player id');
-  return bdlList(`/nfl/v1/players/${id}`, {});
-}
+const API_BASE = 'https://api.balldontlie.io/nfl/v1/odds';
+const API_KEY = process.env.BDL_API_KEY || '';
 
-/* Teams */
-async function listTeams(params = {}) {
-  return bdlList('/nfl/v1/teams', params);
-}
-
-/* Games */
-async function listGames(params = {}) {
-  return bdlList('/nfl/v1/games', params);
-}
-async function getGame(id) {
-  if (!id) throw new Error('Missing game id');
-  return bdlList(`/nfl/v1/games/${id}`, {});
-}
-
-/* Stats */
-async function listStats(params = {}) {
-  return bdlList('/nfl/v1/stats', params);
-}
-async function listSeasonStats(params = {}) {
-  return bdlList('/nfl/v1/season_stats', params);
-}
-
-/* Standings */
-async function listStandings(params = {}) {
-  return bdlList('/nfl/v1/standings', params);
-}
-
-/* Advanced stats endpoints */
-async function listAdvancedRushing(params = {}) {
-  return bdlList('/nfl/v1/advanced_stats/rushing', params);
-}
-async function listAdvancedPassing(params = {}) {
-  return bdlList('/nfl/v1/advanced_stats/passing', params);
-}
-async function listAdvancedReceiving(params = {}) {
-  return bdlList('/nfl/v1/advanced_stats/receiving', params);
-}
-
-/* Team season and team stats */
-async function listTeamSeasonStats(params = {}) {
-  return bdlList('/nfl/v1/team_season_stats', params);
-}
-async function listTeamStats(params = {}) {
-  return bdlList('/nfl/v1/team_stats', params);
-}
-
-/* Plays (play-by-play) */
-async function listPlays(params = {}) {
-  return bdlList('/nfl/v1/plays', params);
-}
-
-/* Odds (game-level) */
-async function listOdds(params = {}) {
-  const p = { ...(params || {}) };
-
-  // Normalize: game_id -> game_ids
-  if (p.game_id != null && (p.game_ids == null || (Array.isArray(p.game_ids) && p.game_ids.length === 0))) {
-    p.game_ids = [p.game_id];
-    delete p.game_id;
+async function request(endpoint, params = {}) {
+  const headers = {};
+  if (API_KEY) {
+    headers['Authorization'] = `Bearer ${API_KEY}`;
   }
+  const url = `${API_BASE}${endpoint}`;
+  const response = await axios.get(url, { params, headers });
+  return response.data;
+}
 
-  // If someone passes a single number in game_ids, coerce to array
-  if (p.game_ids != null && !Array.isArray(p.game_ids)) {
-    p.game_ids = [p.game_ids];
+/**
+ * List game‑level odds. Accepts season/week or a list of game IDs.
+ *
+ * @param {Object} options
+ * @param {number} [options.season] Four‑digit season (e.g. 2025)
+ * @param {number} [options.week] Week number within the season
+ * @param {number[]} [options.game_ids] Array of game IDs
+ * @param {number} [options.per_page] Items per page (when season/week provided)
+ * @returns {Promise<Object>} The API response JSON
+ */
+async function listOdds({ season, week, game_ids, per_page } = {}) {
+  const params = {};
+  if (season) params.season = season;
+  if (week) params.week = week;
+  if (Array.isArray(game_ids) && game_ids.length) {
+    params.game_ids = game_ids.join(',');
   }
-
-  return bdlList('/nfl/v1/odds', p);
+  if (per_page) params.per_page = per_page;
+  return request('', params);
 }
 
-/* Player props (single-game) */
-async function listOddsPlayerProps(params = {}) {
-  return bdlList('/nfl/v1/odds/player_props', params);
-}
-
-/* Injuries */
-async function listPlayerInjuries(params = {}) {
-  return bdlList('/nfl/v1/player_injuries', params);
+/**
+ * List player proposition lines for a single game. Optionally filter by
+ * player, prop type or vendor list. Vendors are provided as an array
+ * and encoded into vendors[0], vendors[1], etc.
+ *
+ * @param {Object} options
+ * @param {number} options.game_id Required game ID
+ * @param {number} [options.player_id] Filter by player ID
+ * @param {string} [options.prop_type] Filter by prop type (passing_yards, rushing_yards, etc.)
+ * @param {string[]} [options.vendors] Filter by list of sportsbook vendors
+ * @returns {Promise<Object>} The API response JSON
+ */
+async function listOddsPlayerProps({ game_id, player_id, prop_type, vendors } = {}) {
+  if (!game_id) {
+    throw new Error('game_id is required');
+  }
+  const params = { game_id };
+  if (player_id) params.player_id = player_id;
+  if (prop_type) params.prop_type = prop_type;
+  if (Array.isArray(vendors) && vendors.length) {
+    vendors.forEach((v, idx) => {
+      params[`vendors[${idx}]`] = v;
+    });
+  }
+  return request('/player_props', params);
 }
 
 module.exports = {
-  listPlayers,
-  getPlayer,
-  listTeams,
-  listGames,
-  getGame,
-  listStats,
-  listSeasonStats,
-  listStandings,
-  listAdvancedRushing,
-  listAdvancedPassing,
-  listAdvancedReceiving,
-  listTeamSeasonStats,
-  listTeamStats,
-  listPlays,
   listOdds,
   listOddsPlayerProps,
-  listPlayerInjuries,
 };

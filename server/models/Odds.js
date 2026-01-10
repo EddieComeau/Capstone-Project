@@ -1,38 +1,35 @@
 const mongoose = require('mongoose');
 
-// Define the Odds schema for storing sportsbook odds and betting lines.
-// Each odds document represents a snapshot of the market for a single
-// NFL game at a given time.  We deliberately omit single-field
-// indexes on gameId because the index defined below covers the same
-// field.  Duplicate indexes can cause Mongoose to emit warnings and
-// incur unnecessary overhead.
+/*
+ * Odds model
+ *
+ * Stores gameā€‘level betting odds retrieved from the BallDontLie API. Each
+ * document is keyed by game_id and vendor. Fields include spreads,
+ * totals and money line odds for both sides, along with a raw
+ * snapshot of the source payload. A unique compound index prevents
+ * duplicates on repeated syncs.
+ */
 
 const OddsSchema = new mongoose.Schema({
-  // Identifier for the game these odds apply to
-  gameId: { type: Number, required: true },
-  // Name of the sportsbook or provider
-  sportsbook: { type: String, required: true },
-  // Point spread (e.g. -7.5)
-  spread: { type: Number },
-  // Total points (over/under line)
+  game_id: { type: Number, required: true },
+  vendor: { type: String, required: true },
+  spread_home: { type: Number },
+  spread_away: { type: Number },
+  spread_home_odds: { type: Number },
+  spread_away_odds: { type: Number },
   total: { type: Number },
-  // Money line for the home team (positive for underdog, negative for favorite)
-  moneyLineHome: { type: Number },
-  // Money line for the away team
-  moneyLineAway: { type: Number },
-  // Timestamp when these odds were recorded
-  timestamp: { type: Date, default: Date.now },
-  // Any additional odds or prop lines (e.g. first half lines, alternate spreads)
-  extra: { type: mongoose.Schema.Types.Mixed },
+  over_odds: { type: Number },
+  under_odds: { type: Number },
+  moneyline_home: { type: Number },
+  moneyline_away: { type: Number },
+  moneyline_draw: { type: Number },
+  updated_at: { type: Date },
+  raw: { type: mongoose.Schema.Types.Mixed },
+  synced_at: { type: Date, default: Date.now },
 }, {
   timestamps: true,
 });
 
-// Index on gameId to enable efficient queries by game.  We do not set
-// `index: true` on the gameId field itself in the schema definition
-// because doing so alongside this explicit index would create a
-// duplicate index in MongoDB.  Defining a single index here avoids
-// duplication and the associated Mongoose warning.
-OddsSchema.index({ gameId: 1 });
+OddsSchema.index({ game_id: 1, vendor: 1 }, { unique: true });
 
 module.exports = mongoose.model('Odds', OddsSchema);

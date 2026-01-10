@@ -1,80 +1,70 @@
-// server/routes/betting.js
-//
-// Exposes REST endpoints for retrieving and synchronising betting data.
-// Clients can query the Odds and PlayerProp collections and trigger
-// background syncs on demand. The sync operation leverages the
-// shared `syncBettingData` function defined in server/syncBettingData.js.
-
 const express = require('express');
 const router = express.Router();
 
+/*
+ * Betting Routes
+ *
+ * Exposes REST endpoints to query betting odds and player props from
+ * MongoDB. Provides a manual sync endpoint to pull fresh data from
+ * the BallDontLie API via the syncBettingData() function. The field
+ * names for queries align with the underlying Mongoose models: use
+ * playerId/gameId/propType/vendor to filter props and gameId/vendor
+ * to filter odds.
+ */
+
 const Odds = require('../models/Odds');
-const PlayerProp = require('../models/PlayerProp');
+const BettingProp = require('../models/BettingProp');
 const { syncBettingData } = require('../syncBettingData');
 
-/**
- * GET /api/betting/props
- *
- * Retrieve player prop lines from MongoDB. Supports filtering by
- * playerId, gameId, vendor, prop_type, season and week. Season/week
- * filters derive games via the Game model and then restrict props.
- */
+// GET /api/betting/props
+// Retrieve player prop lines. Supports filtering by playerId,
+// gameId, propType and vendor. Limit defaults to 100 and is
+// capped at 1000.
 router.get('/props', async (req, res) => {
   try {
     const query = {};
-    if (req.query.playerId) query.playerId = Number(req.query.playerId);
-    if (req.query.gameId) query.gameId = Number(req.query.gameId);
-    if (req.query.propType) query.prop_type = req.query.propType;
+    if (req.query.playerId) query.player_id = Number(req.query.playerId);
+    if (req.query.gameId) query.game_id = Number(req.query.gameId);
+    if (req.query.propType) query.prop = req.query.propType;
     if (req.query.vendor) query.vendor = req.query.vendor;
-    // Note: season/week filtering via Game model is not implemented here
-    // because props are keyed only by gameId. For now, clients should
-    // supply gameId(s) explicitly when filtering by season/week.
     const limit = req.query.limit ? Math.min(Number(req.query.limit), 1000) : 100;
-    const props = await PlayerProp.find(query).limit(limit).lean();
+    const props = await BettingProp.find(query).sort({ updated_at: -1 }).limit(limit).lean();
     res.json({ ok: true, count: props.length, props });
   } catch (e) {
-    console.error('Error fetching player props:', e && e.message ? e.message : e);
-    res.status(500).json({ ok: false, error: 'Failed to fetch player props' });
+    console.error('Error fetching betting props:', e.message || e);
+    res.status(500).json({ ok: false, error: 'Failed to fetch betting props' });
   }
 });
 
-/**
- * GET /api/betting/odds
- *
- * Retrieve gameā€‘level odds from MongoDB. Clients can filter by
- * gameId and provider. Additional query parameters such as season or
- * week can be passed but are not used directly here ā€“ clients should
- * derive game IDs from the Games collection first.
- */
+// GET /api/betting/odds
+// Retrieve game odds. Filter by gameId or vendor. Limit defaults to
+// 100 and is capped at 1000.
 router.get('/odds', async (req, res) => {
   try {
     const query = {};
-    if (req.query.gameId) query.gameId = Number(req.query.gameId);
-    if (req.query.provider) query.provider = req.query.provider;
+    if (req.query.gameId) query.game_id = Number(req.query.gameId);
+    if (req.query.vendor) query.vendor = req.query.vendor;
     const limit = req.query.limit ? Math.min(Number(req.query.limit), 1000) : 100;
-    const odds = await Odds.find(query).limit(limit).lean();
+    const odds = await Odds.find(query).sort({ updated_at: -1 }).limit(limit).lean();
     res.json({ ok: true, count: odds.length, odds });
   } catch (e) {
-    console.error('Error fetching odds:', e && e.message ? e.message : e);
-    res.status(500).json({ ok: false, error: 'Failed to fetch odds' });
+    console.error('Error fetching betting odds:', e.message || e);
+    res.status(500).json({ ok: false, error: 'Failed to fetch betting odds' });
   }
 });
 
-/**
- * POST /api/betting/sync
- *
- * Trigger an onā€‘demand sync of betting data. Accepts JSON body
- * matching the options supported by syncBettingData(). Returns a
- * summary of inserted counts. This endpoint can be protected with
- * authentication in production.
- */
+// POST /api/betting/sync
+// Kick off an on‑demand sync. Accepts JSON body with optional
+// season, week and gameIds array. Returns a summary of inserted
+// records. This endpoint is unauthenticated for development
+// convenience; protect with auth in production.
 router.post('/sync', async (req, res) => {
   try {
-    const opts = req.body || {};
-    const summary = await syncBettingData(opts);
+    const options = req.body || {};
+    const summary = await syncBettingData(options);
     res.json({ ok: true, summary });
   } catch (e) {
-    console.error('Error performing betting sync:', e && e.message ? e.message : e);
+    console.error('Error syncing betting data:', e.message || e);
     res.status(500).json({ ok: false, error: 'Sync failed' });
   }
 });
