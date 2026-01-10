@@ -43,6 +43,7 @@
     "mongoose": "^8.21.0",
     "morgan": "^1.10.0",
     "node-cron": "^4.2.1",
+    "nodemailer": "^7.0.12",
     "pino": "^8.15.0",
     "pino-pretty": "^10.2.0",
     "zod": "^3.22.2"

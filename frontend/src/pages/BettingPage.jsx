@@ -1,5 +1,8 @@
+// frontend/src/pages/BettingPage.jsx
+
 import { useEffect, useState } from "react";
 import PlayerSearchInput from "../components/PlayerSearchInput";
+import WeekPicker from "../components/WeekPicker";
 
 export default function BettingPage() {
   const [odds, setOdds] = useState([]);
@@ -9,10 +12,11 @@ export default function BettingPage() {
   const [syncedAt, setSyncedAt] = useState(null);
   const [selectedPlayer, setSelectedPlayer] = useState(null);
 
+  // Filters now include season/week controlled via WeekPicker
   const [filters, setFilters] = useState({
     playerId: "",
     gameId: "",
-    season: "",
+    season: new Date().getFullYear().toString(),
     week: "",
   });
 
@@ -72,6 +76,7 @@ export default function BettingPage() {
 
   useEffect(() => {
     fetchData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function updateFilter(field, value) {
@@ -83,7 +88,14 @@ export default function BettingPage() {
       <h2>Betting Odds & Player Props</h2>
 
       {/* Filters */}
-      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
+      <div
+        style={{
+          display: "flex",
+          gap: 10,
+          flexWrap: "wrap",
+          marginBottom: 16,
+        }}
+      >
         <PlayerSearchInput
           onSelect={(player) => {
             setSelectedPlayer(player);
@@ -100,13 +112,14 @@ export default function BettingPage() {
           value={filters.season}
           onChange={(e) => updateFilter("season", e.target.value)}
         />
-        <input
-          placeholder="Week"
-          value={filters.week}
-          onChange={(e) => updateFilter("week", e.target.value)}
+        {/* Replace free‑text Week input with WeekPicker */}
+        <WeekPicker
+          seasonStart={`${filters.season}-09-05`}
+          value={Number(filters.week) || undefined}
+          onChange={(w) => updateFilter("week", w)}
         />
         <button onClick={fetchData} disabled={loading}>
-          🔁 Refresh
+          {loading ? "Loading..." : "🔁 Refresh"}
         </button>
       </div>
 
@@ -131,7 +144,11 @@ export default function BettingPage() {
               }}
             >
               <div>
-                <b>{player ? `${player.full_name} (${player.team_abbr})` : `ID ${p.player_id}`}</b>
+                <b>
+                  {player
+                    ? `${player.full_name} (${player.team_abbr})`
+                    : `ID ${p.player_id}`}
+                </b>
               </div>
               <div>
                 Prop: {p.prop_type ?? p.market ?? p.stat_type ?? "Unknown"}

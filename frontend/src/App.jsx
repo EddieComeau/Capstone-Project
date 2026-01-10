@@ -1,3 +1,5 @@
+// frontend/src/App.jsx
+
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import "./App.css";
 
@@ -5,7 +7,6 @@ import TopTabs from "./components/TopTabs";
 import HomePage from "./pages/HomePage";
 import StartPage from "./pages/StartPage";
 import PrototypePage from "./pages/PrototypePage";
-
 import DepthChartPage from "./pages/DepthChartPage";
 import PlayByPlayTab from "./components/playbyplay/PlayByPlayTab";
 import MatchupComparisonPage from "./pages/MatchupComparisonPage";
@@ -14,6 +15,7 @@ import BettingPage from "./pages/BettingPage";
 import InjuriesPage from "./pages/InjuriesPage";
 import PlayerPage from "./pages/PlayerPage";
 import TeamPage from "./pages/TeamPage";
+import AdminPage from "./pages/AdminPage"; // ✅ new admin page
 
 export default function App() {
   return (
@@ -33,6 +35,7 @@ export default function App() {
           <Route path="/injuries" element={<InjuriesPage />} />
           <Route path="/player/:id" element={<PlayerPage />} />
           <Route path="/team/:abbr" element={<TeamPage />} />
+          <Route path="/admin" element={<AdminPage />} /> {/* ✅ new route */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
