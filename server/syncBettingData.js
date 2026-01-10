@@ -36,54 +36,56 @@ function sleep(ms) {
 }
 
 async function main() {
-  await mongoose.connect(MONGO_URI);
-  console.log('✅ Connected to MongoDB');
-  console.log(`📡 API Base: ${BASE}`);
-
-  let games;
   try {
-    const res = await api.get('/games', { params: { season, week } });
-    games = res.data?.data || [];
-  } catch (err) {
-    logAxiosError('games', err);
-    process.exit(1);
-  }
+    await mongoose.connect(MONGO_URI);
+    console.log('✅ Connected to MongoDB');
+    console.log(`📡 API Base: ${BASE}`);
 
-  if (!games.length) {
-    console.log('⚠️ No games found');
-    return;
-  }
+    // --- Get games ---
+    const { data: gamesResponse } = await api.get('/games', {
+      params: { season, week },
+    });
+    const games = gamesResponse?.data || [];
 
-  console.log(`🎯 Found ${games.length} games`);
+    if (!games.length) {
+      console.log('⚠️ No games found');
+      return;
+    }
 
-  for (const game of games) {
-    const gameId = game.id;
+    console.log(`🎯 Found ${games.length} games`);
 
-    // --- Odds ---
+    // --- Get odds once for the week ---
     try {
-      const res = await api.get('/odds', {
+      const { data: oddsRes } = await api.get('/odds', {
         params: { season, week },
       });
-      for (const o of res.data?.data || []) {
+
+      for (const o of oddsRes?.data || []) {
+        o.synced_at = new Date();
         await Odds.updateOne(
           { game_id: o.game_id, vendor: o.vendor },
           o,
           { upsert: true }
         );
       }
-      console.log(`✅ Odds synced for game ${gameId}`);
+
+      console.log(`✅ Odds synced for ${oddsRes?.data?.length || 0} entries`);
     } catch (err) {
-      if (err.response?.status === 404) {
-        console.log(`ℹ️ No odds for game ${gameId}`);
-      } else {
-        logAxiosError('odds', err);
-      }
+      logAxiosError('odds', err);
     }
 
-    // --- Player Props ---
+    // --- Batch player-props by game_ids ---
+    const gameIds = games.map((g) => g.id);
     try {
-      const res = await api.get('/player-props', { params: { game_id: gameId } });
-      for (const p of res.data?.data || []) {
+      const { data: propsRes } = await api.get('/player-props', {
+        params: { 'game_ids[]': gameIds },
+      });
+
+      const props = propsRes?.data || [];
+      console.log(`✅ Props fetched: ${props.length}`);
+
+      for (const p of props) {
+        p.synced_at = new Date();
         await BettingProp.updateOne(
           {
             game_id: p.game_id,
@@ -95,21 +97,22 @@ async function main() {
           { upsert: true }
         );
       }
-      console.log(`✅ Props synced for game ${gameId}`);
+
+      console.log(`✅ Props synced for ${props.length} entries`);
     } catch (err) {
       if (err.response?.status === 404) {
-        console.log(`ℹ️ No props for game ${gameId}`);
+        console.log(`ℹ️ No props for any of the games`);
       } else {
         logAxiosError('player-props', err);
       }
     }
 
-    // ✅ Delay to avoid hitting rate limits (429)
-    await sleep(500);
+    await mongoose.disconnect();
+    console.log('🎉 Betting sync complete');
+  } catch (err) {
+    console.error('❌ Fatal sync error:', err.message);
+    process.exit(1);
   }
-
-  await mongoose.disconnect();
-  console.log('🎉 Betting sync complete');
 }
 
 function logAxiosError(label, err) {
@@ -119,7 +122,4 @@ function logAxiosError(label, err) {
   console.error('DATA:', err.response?.data);
 }
 
-main().catch((err) => {
-  console.error('❌ Fatal error:', err.message);
-  process.exit(1);
-});
+main();

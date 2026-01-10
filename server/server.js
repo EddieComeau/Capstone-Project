@@ -1,40 +1,40 @@
-// server/server.js
-
 require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
-
-const bettingRoutes = require('./routes/betting');
-// import additional routes here (players, teams, etc.) if you want to mount them
-
 const app = express();
-const PORT = process.env.PORT || 4000;
-const MONGO_URI = process.env.MONGO_URI;
 
+const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/nfl_cards';
+const PORT = process.env.PORT || 4000;
+
+// Middleware
 app.use(cors());
 app.use(express.json());
 
-// Health check
-app.get('/api/health', (_, res) => {
-  res.json({ ok: true, message: 'API is healthy 🚀' });
+// Connect to MongoDB
+mongoose
+  .connect(MONGO_URI)
+  .then(() => console.log('✅ MongoDB connected'))
+  .catch((err) => {
+    console.error('❌ MongoDB connection error:', err.message);
+    process.exit(1);
+  });
+
+// Routes
+app.use('/api/teams', require('./routes/teamRoutes'));
+app.use('/api/players', require('./routes/playerRoutes'));
+app.use('/api/games', require('./routes/gameRoutes'));
+app.use('/api/stats', require('./routes/statRoutes'));
+app.use('/api/cards', require('./routes/cardRoutes'));
+app.use('/api/betting', require('./routes/bettingRoutes'));
+app.use('/api/admin', require('./routes/adminRoutes')); // ✅ NEW: Sync Betting Admin Route
+
+// Root route
+app.get('/', (req, res) => {
+  res.send('🏈 NFL Card Collector API');
 });
 
-// Betting routes
-app.use('/api/betting', bettingRoutes);
-// mount other routes if needed, e.g. app.use('/api/players', playersRoutes)
-
-mongoose.connect(MONGO_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-})
-.then(() => {
-  console.log('✅ MongoDB connected');
-  app.listen(PORT, () => {
-    console.log(`🚀 Server running at http://localhost:${PORT}`);
-  });
-})
-.catch((err) => {
-  console.error('❌ MongoDB connection error:', err.message);
-  process.exit(1);
+// Start server
+app.listen(PORT, () => {
+  console.log(`🚀 Server running on http://localhost:${PORT}`);
 });
