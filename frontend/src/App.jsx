@@ -12,6 +12,8 @@ import MatchupComparisonPage from "./pages/MatchupComparisonPage";
 import StandingsPage from "./pages/StandingsPage";
 import BettingPage from "./pages/BettingPage";
 import InjuriesPage from "./pages/InjuriesPage";
+import PlayerPage from "./pages/PlayerPage";
+import TeamPage from "./pages/TeamPage";
 
 export default function App() {
   return (
@@ -29,6 +31,8 @@ export default function App() {
           <Route path="/standings" element={<StandingsPage />} />
           <Route path="/betting" element={<BettingPage />} />
           <Route path="/injuries" element={<InjuriesPage />} />
+          <Route path="/player/:id" element={<PlayerPage />} />
+          <Route path="/team/:abbr" element={<TeamPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>

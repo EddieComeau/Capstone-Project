@@ -4,6 +4,7 @@ import { apiGet } from "../lib/api";
 import { mockDepthCharts } from "../data/mockDepthCharts";
 import TeamBadge from "../components/common/TeamBadge";
 import PlayerAvatar from "../components/common/avatar";
+import PlayerSearchInput from "../components/PlayerSearchInput"; // ← ADDED
 import "./DepthChartPage.css";
 
 function SlotCard({ player, onSelect, active }) {
@@ -18,7 +19,9 @@ function SlotCard({ player, onSelect, active }) {
         <TeamBadge abbr={player.team} size={22} />
       </div>
       <div className="dcName">{player.name}</div>
-      <div className="dcMeta">#{player.number} • {player.depthLabel}</div>
+      <div className="dcMeta">
+        #{player.number} • {player.depthLabel}
+      </div>
       <div className="dcAvatar">
         <PlayerAvatar seed={`${player.team}-${player.name}`} size={48} />
       </div>
@@ -162,157 +165,301 @@ export default function DepthChartPage() {
   const [detailTab, setDetailTab] = useState("overview");
   const [compareTargetId, setCompareTargetId] = useState(null);
 
-  // Currently selected team abbreviation.  Defaults to Kansas City (KC).  The
-  // user can select a different team from a dropdown of available teams.
+  // Team abbreviation (default KC)
   const [teamAbbr, setTeamAbbr] = useState("KC");
-  // List of teams loaded from the backend to populate the dropdown
+  // List of teams
   const [teams, setTeams] = useState([]);
-  // Roster data keyed by OFF/DEF/ST; will be populated from the backend
+  // Roster keyed by OFF/DEF/ST
   const [roster, setRoster] = useState({ OFF: [], DEF: [], ST: [] });
 
-  // Fetch list of teams on mount
+  // Fetch list of teams
   useEffect(() => {
     async function loadTeams() {
       try {
-        const teamList = await apiGet('/teams/db');
+        const teamList = await apiGet("/teams/db");
         setTeams(teamList || []);
       } catch (err) {
-        console.warn('Failed to load teams', err);
+        console.warn("Failed to load teams", err);
       }
     }
     loadTeams();
   }, []);
 
-  // Fetch roster when team abbreviation changes
+  // Fetch roster on team change
   useEffect(() => {
     async function loadRoster() {
       if (!teamAbbr) return;
       try {
         const players = await apiGet(`/roster/${teamAbbr}`);
-        // Transform players into depth chart slots.  Players returned from
-        // `/roster/:abbr` contain at least { first_name, last_name, full_name,
-        // position, team } from the Player model.  We categorise by
-        // offensive, defensive and special teams positions.
+        // ... (this section is unchanged)
         const off = {};
         const def = {};
         const st = {};
-        // helper to push into bucket object keyed by position
         function pushTo(bucket, pos, player) {
           if (!bucket[pos]) bucket[pos] = [];
           bucket[pos].push(player);
         }
         (players || []).forEach((p) => {
-          const name = p.full_name || `${p.first_name || ''} ${p.last_name || ''}`.trim();
-          const pos = (p.position || '').toUpperCase();
-          const base = pos.replace(/[0-9]/g, '');
+          const name =
+            p.full_name ||
+            `${p.first_name || ""} ${p.last_name || ""}`.trim();
+          const pos = (p.position || "").toUpperCase();
+          const base = pos.replace(/[0-9]/g, "");
           const entry = {
-            position: '',
+            position: "",
             name,
-            number: p.raw?.jersey_number || p.jersey_number || '',
+            number: p.raw?.jersey_number || p.jersey_number || "",
             team: teamAbbr,
-            depthLabel: '',
+            depthLabel: "",
           };
-          // Offense
-          if (['QB', 'RB', 'HB', 'WR', 'TE', 'FB', 'C', 'G', 'T', 'OL'].includes(base)) {
+          if (
+            [
+              "QB",
+              "RB",
+              "HB",
+              "WR",
+              "TE",
+              "FB",
+              "C",
+              "G",
+              "T",
+              "OL",
+            ].includes(base)
+          ) {
             pushTo(off, base || pos, entry);
-          } else if (['DL', 'DE', 'DT', 'LB', 'OLB', 'ILB', 'MLB', 'DB', 'CB', 'FS', 'SS'].includes(base)) {
+          } else if (
+            [
+              "DL",
+              "DE",
+              "DT",
+              "LB",
+              "OLB",
+              "ILB",
+              "MLB",
+              "DB",
+              "CB",
+              "FS",
+              "SS",
+            ].includes(base)
+          ) {
             pushTo(def, base || pos, entry);
-          } else if (['K', 'P', 'LS', 'KR', 'PR'].includes(base)) {
+          } else if (["K", "P", "LS", "KR", "PR"].includes(base)) {
             pushTo(st, base || pos, entry);
           }
         });
-        // Build arrays with position codes like QB1, WR1, etc.  We'll assign
-        // depth labels (Starter/Backup) based on index.
         const offSlots = [];
-        // QB, RB/HB, WR, TE, OL (C,G,T).  Use index to number
-        if (off.QB) off.QB.forEach((p, idx) => offSlots.push({ ...p, position: `QB${idx + 1}`, depthLabel: idx === 0 ? 'Starter' : `QB${idx + 1}` }));
-        if (off.RB) off.RB.forEach((p, idx) => offSlots.push({ ...p, position: `RB${idx + 1}`, depthLabel: idx === 0 ? 'Starter' : `RB${idx + 1}` }));
-        if (off.HB && !off.RB) off.HB.forEach((p, idx) => offSlots.push({ ...p, position: `HB${idx + 1}`, depthLabel: idx === 0 ? 'Starter' : `HB${idx + 1}` }));
-        if (off.WR) off.WR.forEach((p, idx) => offSlots.push({ ...p, position: `WR${idx + 1}`, depthLabel: idx === 0 ? 'Starter' : `WR${idx + 1}` }));
-        if (off.TE) off.TE.forEach((p, idx) => offSlots.push({ ...p, position: `TE${idx + 1}`, depthLabel: idx === 0 ? 'Starter' : `TE${idx + 1}` }));
-        // Offensive line: C,G,T: treat them as single entries
-        if (off.C) off.C.forEach((p) => offSlots.push({ ...p, position: 'C', depthLabel: 'Starter' }));
-        if (off.G) off.G.forEach((p, idx) => offSlots.push({ ...p, position: idx === 0 ? 'LG' : 'RG', depthLabel: idx === 0 ? 'Starter' : 'Starter' }));
-        if (off.T) off.T.forEach((p, idx) => offSlots.push({ ...p, position: idx === 0 ? 'LT' : 'RT', depthLabel: idx === 0 ? 'Starter' : 'Starter' }));
+        if (off.QB)
+          off.QB.forEach((p, idx) =>
+            offSlots.push({
+              ...p,
+              position: `QB${idx + 1}`,
+              depthLabel: idx === 0 ? "Starter" : `QB${idx + 1}`,
+            })
+          );
+        if (off.RB)
+          off.RB.forEach((p, idx) =>
+            offSlots.push({
+              ...p,
+              position: `RB${idx + 1}`,
+              depthLabel: idx === 0 ? "Starter" : `RB${idx + 1}`,
+            })
+          );
+        if (off.HB && !off.RB)
+          off.HB.forEach((p, idx) =>
+            offSlots.push({
+              ...p,
+              position: `HB${idx + 1}`,
+              depthLabel: idx === 0 ? "Starter" : `HB${idx + 1}`,
+            })
+          );
+        if (off.WR)
+          off.WR.forEach((p, idx) =>
+            offSlots.push({
+              ...p,
+              position: `WR${idx + 1}`,
+              depthLabel: idx === 0 ? "Starter" : `WR${idx + 1}`,
+            })
+          );
+        if (off.TE)
+          off.TE.forEach((p, idx) =>
+            offSlots.push({
+              ...p,
+              position: `TE${idx + 1}`,
+              depthLabel: idx === 0 ? "Starter" : `TE${idx + 1}`,
+            })
+          );
+        if (off.C)
+          off.C.forEach((p) =>
+            offSlots.push({ ...p, position: "C", depthLabel: "Starter" })
+          );
+        if (off.G)
+          off.G.forEach((p, idx) =>
+            offSlots.push({
+              ...p,
+              position: idx === 0 ? "LG" : "RG",
+              depthLabel: "Starter",
+            })
+          );
+        if (off.T)
+          off.T.forEach((p, idx) =>
+            offSlots.push({
+              ...p,
+              position: idx === 0 ? "LT" : "RT",
+              depthLabel: "Starter",
+            })
+          );
 
         const defSlots = [];
-        // Cornerbacks (CB), Safeties (FS,SS), Linebackers (LB/MLB/ILB/OLB), Defensive line (DL, DE, DT)
-        if (def.CB) def.CB.forEach((p, idx) => defSlots.push({ ...p, position: `CB${idx + 1}`, depthLabel: idx === 0 ? 'Starter' : `CB${idx + 1}` }));
-        if (def.FS) def.FS.forEach((p) => defSlots.push({ ...p, position: 'FS', depthLabel: 'Starter' }));
-        if (def.SS) def.SS.forEach((p) => defSlots.push({ ...p, position: 'SS', depthLabel: 'Starter' }));
-        // LB: prefer specific keys; unify other LB types
-        const lbBuckets = [].concat(def.OLB || [], def.ILB || [], def.MLB || [], def.LB || []);
-        lbBuckets.forEach((p, idx) => defSlots.push({ ...p, position: ['OLB','ILB','MLB','LB'][idx] || 'LB', depthLabel: idx === 0 ? 'Starter' : `LB${idx + 1}` }));
-        if (def.DL) def.DL.forEach((p, idx) => defSlots.push({ ...p, position: `DL${idx + 1}`, depthLabel: idx === 0 ? 'Starter' : `DL${idx + 1}` }));
-        if (def.DE) def.DE.forEach((p, idx) => defSlots.push({ ...p, position: `DE${idx + 1}`, depthLabel: idx === 0 ? 'Starter' : `DE${idx + 1}` }));
-        if (def.DT) def.DT.forEach((p, idx) => defSlots.push({ ...p, position: `DT${idx + 1}`, depthLabel: idx === 0 ? 'Starter' : `DT${idx + 1}` }));
+        if (def.CB)
+          def.CB.forEach((p, idx) =>
+            defSlots.push({
+              ...p,
+              position: `CB${idx + 1}`,
+              depthLabel: idx === 0 ? "Starter" : `CB${idx + 1}`,
+            })
+          );
+        if (def.FS)
+          def.FS.forEach((p) =>
+            defSlots.push({ ...p, position: "FS", depthLabel: "Starter" })
+          );
+        if (def.SS)
+          def.SS.forEach((p) =>
+            defSlots.push({ ...p, position: "SS", depthLabel: "Starter" })
+          );
+        const lbBuckets = [].concat(
+          def.OLB || [],
+          def.ILB || [],
+          def.MLB || [],
+          def.LB || []
+        );
+        lbBuckets.forEach((p, idx) =>
+          defSlots.push({
+            ...p,
+            position: ["OLB", "ILB", "MLB", "LB"][idx] || "LB",
+            depthLabel: idx === 0 ? "Starter" : `LB${idx + 1}`,
+          })
+        );
+        if (def.DL)
+          def.DL.forEach((p, idx) =>
+            defSlots.push({
+              ...p,
+              position: `DL${idx + 1}`,
+              depthLabel: idx === 0 ? "Starter" : `DL${idx + 1}`,
+            })
+          );
+        if (def.DE)
+          def.DE.forEach((p, idx) =>
+            defSlots.push({
+              ...p,
+              position: `DE${idx + 1}`,
+              depthLabel: idx === 0 ? "Starter" : `DE${idx + 1}`,
+            })
+          );
+        if (def.DT)
+          def.DT.forEach((p, idx) =>
+            defSlots.push({
+              ...p,
+              position: `DT${idx + 1}`,
+              depthLabel: idx === 0 ? "Starter" : `DT${idx + 1}`,
+            })
+          );
 
         const stSlots = [];
-        if (st.K) st.K.forEach((p, idx) => stSlots.push({ ...p, position: 'K', depthLabel: idx === 0 ? 'Starter' : `K${idx + 1}` }));
-        if (st.P) st.P.forEach((p, idx) => stSlots.push({ ...p, position: 'P', depthLabel: idx === 0 ? 'Starter' : `P${idx + 1}` }));
-        if (st.LS) st.LS.forEach((p) => stSlots.push({ ...p, position: 'LS', depthLabel: 'Starter' }));
-        if (st.KR) st.KR.forEach((p) => stSlots.push({ ...p, position: 'KR', depthLabel: 'Return' }));
-        if (st.PR) st.PR.forEach((p) => stSlots.push({ ...p, position: 'PR', depthLabel: 'Return' }));
+        if (st.K)
+          st.K.forEach((p, idx) =>
+            stSlots.push({
+              ...p,
+              position: "K",
+              depthLabel: idx === 0 ? "Starter" : `K${idx + 1}`,
+            })
+          );
+        if (st.P)
+          st.P.forEach((p, idx) =>
+            stSlots.push({
+              ...p,
+              position: "P",
+              depthLabel: idx === 0 ? "Starter" : `P${idx + 1}`,
+            })
+          );
+        if (st.LS)
+          st.LS.forEach((p) =>
+            stSlots.push({ ...p, position: "LS", depthLabel: "Starter" })
+          );
+        if (st.KR)
+          st.KR.forEach((p) =>
+            stSlots.push({ ...p, position: "KR", depthLabel: "Return" })
+          );
+        if (st.PR)
+          st.PR.forEach((p) =>
+            stSlots.push({ ...p, position: "PR", depthLabel: "Return" })
+          );
 
-        // If no players were found for any unit (likely because the DB is empty or
-        // syncing hasn’t been performed), fall back to a mock depth chart.  The
-        // mock dataset mirrors the shape of our depth chart structure and
-        // provides generic players for demonstration.  Otherwise use the
-        // computed slots.
-        if (offSlots.length === 0 && defSlots.length === 0 && stSlots.length === 0) {
-          const fallbackOff = Object.entries(mockDepthCharts.offense).map(([pos, p]) => ({
-            position: pos,
-            name: `${p.first_name || ''} ${p.last_name || ''}`.trim(),
-            number: p.jersey_number || '',
-            team: p.team || teamAbbr,
-            depthLabel: 'Starter',
-          }));
-          const fallbackDef = Object.entries(mockDepthCharts.defense).map(([pos, p]) => ({
-            position: pos,
-            name: `${p.first_name || ''} ${p.last_name || ''}`.trim(),
-            number: p.jersey_number || '',
-            team: p.team || teamAbbr,
-            depthLabel: 'Starter',
-          }));
-          const fallbackST = Object.entries(mockDepthCharts.specialTeams).map(([pos, p]) => ({
-            position: pos,
-            name: `${p.first_name || ''} ${p.last_name || ''}`.trim(),
-            number: p.jersey_number || '',
-            team: p.team || teamAbbr,
-            depthLabel: pos === 'KR' || pos === 'PR' ? 'Return' : 'Starter',
-          }));
+        if (
+          offSlots.length === 0 &&
+          defSlots.length === 0 &&
+          stSlots.length === 0
+        ) {
+          const fallbackOff = Object.entries(mockDepthCharts.offense).map(
+            ([pos, p]) => ({
+              position: pos,
+              name: `${p.first_name || ""} ${p.last_name || ""}`.trim(),
+              number: p.jersey_number || "",
+              team: p.team || teamAbbr,
+              depthLabel: "Starter",
+            })
+          );
+          const fallbackDef = Object.entries(mockDepthCharts.defense).map(
+            ([pos, p]) => ({
+              position: pos,
+              name: `${p.first_name || ""} ${p.last_name || ""}`.trim(),
+              number: p.jersey_number || "",
+              team: p.team || teamAbbr,
+              depthLabel: "Starter",
+            })
+          );
+          const fallbackST = Object.entries(mockDepthCharts.specialTeams).map(
+            ([pos, p]) => ({
+              position: pos,
+              name: `${p.first_name || ""} ${p.last_name || ""}`.trim(),
+              number: p.jersey_number || "",
+              team: p.team || teamAbbr,
+              depthLabel:
+                pos === "KR" || pos === "PR" ? "Return" : "Starter",
+            })
+          );
           setRoster({ OFF: fallbackOff, DEF: fallbackDef, ST: fallbackST });
         } else {
           setRoster({ OFF: offSlots, DEF: defSlots, ST: stSlots });
         }
       } catch (err) {
-        console.warn('Failed to load roster', err);
-        // If the API call fails (e.g. network error, missing data), fall back
-        // to the mock depth chart so the UI doesn’t remain empty.  This ensures
-        // that the depth chart page always displays something meaningful even
-        // when the backend isn’t populated or reachable.  The teamAbbr is
-        // passed through so players appear with the selected team acronym.
-        const fallbackOff = Object.entries(mockDepthCharts.offense).map(([pos, p]) => ({
-          position: pos,
-          name: `${p.first_name || ''} ${p.last_name || ''}`.trim(),
-          number: p.jersey_number || '',
-          team: p.team || teamAbbr,
-          depthLabel: 'Starter',
-        }));
-        const fallbackDef = Object.entries(mockDepthCharts.defense).map(([pos, p]) => ({
-          position: pos,
-          name: `${p.first_name || ''} ${p.last_name || ''}`.trim(),
-          number: p.jersey_number || '',
-          team: p.team || teamAbbr,
-          depthLabel: 'Starter',
-        }));
-        const fallbackST = Object.entries(mockDepthCharts.specialTeams).map(([pos, p]) => ({
-          position: pos,
-          name: `${p.first_name || ''} ${p.last_name || ''}`.trim(),
-          number: p.jersey_number || '',
-          team: p.team || teamAbbr,
-          depthLabel: pos === 'KR' || pos === 'PR' ? 'Return' : 'Starter',
-        }));
+        console.warn("Failed to load roster", err);
+        const fallbackOff = Object.entries(mockDepthCharts.offense).map(
+          ([pos, p]) => ({
+            position: pos,
+            name: `${p.first_name || ""} ${p.last_name || ""}`.trim(),
+            number: p.jersey_number || "",
+            team: p.team || teamAbbr,
+            depthLabel: "Starter",
+          })
+        );
+        const fallbackDef = Object.entries(mockDepthCharts.defense).map(
+          ([pos, p]) => ({
+            position: pos,
+            name: `${p.first_name || ""} ${p.last_name || ""}`.trim(),
+            number: p.jersey_number || "",
+            team: p.team || teamAbbr,
+            depthLabel: "Starter",
+          })
+        );
+        const fallbackST = Object.entries(mockDepthCharts.specialTeams).map(
+          ([pos, p]) => ({
+            position: pos,
+            name: `${p.first_name || ""} ${p.last_name || ""}`.trim(),
+            number: p.jersey_number || "",
+            team: p.team || teamAbbr,
+            depthLabel: pos === "KR" || pos === "PR" ? "Return" : "Starter",
+          })
+        );
         setRoster({ OFF: fallbackOff, DEF: fallbackDef, ST: fallbackST });
       }
     }
@@ -368,14 +515,31 @@ export default function DepthChartPage() {
     <div className="dcPage">
       <div className="dcHeader">
         <h2 className="dcTitle">Depth Chart</h2>
-        {/* Team selection dropdown allows the user to choose a roster. */}
+        {/* Player name search (auto-set team and select) */}
+        <div style={{ margin: "0.5rem 0" }}>
+          <PlayerSearchInput
+            onSelect={(player) => {
+              setTeamAbbr(player.team_abbr);
+              setSelectedPlayer({
+                name: player.full_name,
+                team: player.team_abbr,
+                number: player.jersey_number || "",
+                position: "",
+                depthLabel: "",
+              });
+            }}
+          />
+        </div>
+        {/* Team selection dropdown */}
         <div className="teamSelect">
-          <label htmlFor="team-select" style={{ marginRight: '0.5rem' }}>Team:</label>
+          <label htmlFor="team-select" style={{ marginRight: "0.5rem" }}>
+            Team:
+          </label>
           <select
             id="team-select"
             value={teamAbbr}
             onChange={(e) => setTeamAbbr(e.target.value)}
-            style={{ padding: '0.25rem 0.5rem', borderRadius: '4px' }}
+            style={{ padding: "0.25rem 0.5rem", borderRadius: "4px" }}
           >
             {teams.map((t) => (
               <option key={t.abbreviation} value={t.abbreviation}>
@@ -413,17 +577,33 @@ export default function DepthChartPage() {
 
           <div className="dcGraphRail" aria-live="polite">
             <div className="graphHeader">Graphs follow your selection</div>
-            <div className="graphSub">Click any player card and scroll — trend bars update for that position.</div>
+            <div className="graphSub">
+              Click any player card and scroll — trend bars update for that
+              position.
+            </div>
             <div className="sparkGrid">
               {graphSeries.map((series) => (
                 <div key={series.label} className="sparkCard">
                   <div className="sparkTitle">{series.label}</div>
-                  <div className="sparkline" role="img" aria-label={`${series.label} trend for ${selectedPlayer?.name || "player"}`}>
+                  <div
+                    className="sparkline"
+                    role="img"
+                    aria-label={`${series.label} trend for ${
+                      selectedPlayer?.name || "player"
+                    }`}
+                  >
                     {series.values.map((v, idx) => (
-                      <div key={`${series.label}-${idx}`} className="sparkBar" style={{ height: `${v}%`, background: series.color }} />
+                      <div
+                        key={`${series.label}-${idx}`}
+                        className="sparkBar"
+                        style={{ height: `${v}%`, background: series.color }}
+                      />
                     ))}
                   </div>
-                  <div className="sparkMeta">Last {series.values.length} games • Peak {Math.max(...series.values)}</div>
+                  <div className="sparkMeta">
+                    Last {series.values.length} games • Peak{" "}
+                    {Math.max(...series.values)}
+                  </div>
                 </div>
               ))}
             </div>
@@ -436,10 +616,15 @@ export default function DepthChartPage() {
               <div>
                 <div className="pill">{selectedPlayer.team}</div>
                 <h3 className="inspectorName">{selectedPlayer.name}</h3>
-                <div className="inspectorMeta">#{selectedPlayer.number} • {selectedPlayer.position}</div>
+                <div className="inspectorMeta">
+                  #{selectedPlayer.number} • {selectedPlayer.position}
+                </div>
               </div>
               <div className="inspectorAvatar">
-                <PlayerAvatar seed={`${selectedPlayer.team}-${selectedPlayer.name}-hero`} size={88} />
+                <PlayerAvatar
+                  seed={`${selectedPlayer.team}-${selectedPlayer.name}-hero`}
+                  size={88}
+                />
               </div>
             </div>
 
@@ -476,7 +661,10 @@ export default function DepthChartPage() {
 
             {detailTab === "overview" && (
               <div className="inspectorCard">
-                <div className="inspectorNote">Scroll for stats/graphs. Player tabs stay pinned above the analytics stack.</div>
+                <div className="inspectorNote">
+                  Scroll for stats/graphs. Player tabs stay pinned above the
+                  analytics stack.
+                </div>
                 <div className="inspectorGrid">
                   <div>
                     <div className="miniTitle">Depth Label</div>
@@ -499,12 +687,17 @@ export default function DepthChartPage() {
                 <div className="inspectorCardHeader">
                   <div>
                     <div className="miniTitle">Advanced</div>
-                    <div className="miniBody">{preset.title} • scaled to position</div>
+                    <div className="miniBody">
+                      {preset.title} • scaled to position
+                    </div>
                   </div>
                   <div className="radialBadge">
                     <span className="radialValue">
                       {Math.round(
-                        preset.metrics.reduce((sum, m) => sum + m.value, 0) / preset.metrics.length
+                        preset.metrics.reduce(
+                          (sum, m) => sum + m.value,
+                          0
+                        ) / preset.metrics.length
                       )}
                     </span>
                     <span className="radialLabel">Index</span>
@@ -518,7 +711,10 @@ export default function DepthChartPage() {
                         <span>{m.value}</span>
                       </div>
                       <div className="advancedBar">
-                        <div className="advancedFill" style={{ width: `${m.value}%` }} />
+                        <div
+                          className="advancedFill"
+                          style={{ width: `${m.value}%` }}
+                        />
                       </div>
                     </div>
                   ))}
@@ -556,18 +752,38 @@ export default function DepthChartPage() {
                           <span className="chip">{p.team}</span>
                         </div>
                         <div className="pvpName">{p.name}</div>
-                        <div className="pvpMeta">#{p.number} • {p.depthLabel}</div>
+                        <div className="pvpMeta">
+                          #{p.number} • {p.depthLabel}
+                        </div>
                         <div className="pvpStatRow">
                           <span>Explosiveness</span>
-                          <div className="statBar"><div style={{ width: `${70 + (p.number % 10)}%` }} /></div>
+                          <div className="statBar">
+                            <div
+                              style={{
+                                width: `${70 + (p.number % 10)}%`,
+                              }}
+                            />
+                          </div>
                         </div>
                         <div className="pvpStatRow">
                           <span>Consistency</span>
-                          <div className="statBar"><div style={{ width: `${64 + (p.number % 12)}%` }} /></div>
+                          <div className="statBar">
+                            <div
+                              style={{
+                                width: `${64 + (p.number % 12)}%`,
+                              }}
+                            />
+                          </div>
                         </div>
                         <div className="pvpStatRow">
                           <span>Scheme Fit</span>
-                          <div className="statBar"><div style={{ width: `${60 + (p.number % 14)}%` }} /></div>
+                          <div className="statBar">
+                            <div
+                              style={{
+                                width: `${60 + (p.number % 14)}%`,
+                              }}
+                            />
+                          </div>
                         </div>
                       </div>
                     ))}
@@ -580,20 +796,32 @@ export default function DepthChartPage() {
               <div className="inspectorCard">
                 <div className="inspectorCardHeader">
                   <div className="miniTitle">Team vs Team</div>
-                  <div className="miniBody">Run defense vs pass blocking, rush vs coverage, and more.</div>
+                  <div className="miniBody">
+                    Run defense vs pass blocking, rush vs coverage, and more.
+                  </div>
                 </div>
                 <div className="teamCompare">
                   {TEAM_COMPARISON.map((m) => (
                     <div key={m.label} className="teamCompareRow">
                       <div className="teamCompareLabel">{m.label}</div>
                       <div className="teamMeter">
-                        <div className="teamMeterFill left" style={{ width: `${m.left}%` }} />
-                        <div className="teamMeterFill right" style={{ width: `${m.right}%` }} />
+                        <div
+                          className="teamMeterFill left"
+                          style={{ width: `${m.left}%` }}
+                        />
+                        <div
+                          className="teamMeterFill right"
+                          style={{ width: `${m.right}%` }}
+                        />
                         <div className="teamMeterCenter" />
                       </div>
                       <div className="teamCompareValues">
-                        <span>{selectedPlayer.team}: {m.left}</span>
-                        <span>Opponent: {m.right}</span>
+                        <span>
+                          {selectedPlayer.team}: {m.left}
+                        </span>
+                        <span>
+                          Opponent: {m.right}
+                        </span>
                       </div>
                     </div>
                   ))}

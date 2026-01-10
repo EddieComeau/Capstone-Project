@@ -1,6 +1,5 @@
 import { NavLink, useNavigate } from "react-router-dom";
-import PlayerSearchInput from "../components/PlayerSearchInput";
-import { useNavigate } from "react-router-dom";
+import PlayerSearchInput from "./PlayerSearchInput";
 
 export default function TopTabs() {
   const navigate = useNavigate();
@@ -14,6 +13,13 @@ export default function TopTabs() {
           <div className="brandTitle">Sideline Studio</div>
           <div className="brandSub">Pro Football Companion</div>
         </div>
+      </div>
+
+      {/* Global player search bar */}
+      <div style={{ flexGrow: 1, marginLeft: 20, marginRight: 20 }}>
+        <PlayerSearchInput
+          onSelect={(player) => navigate(`/player/${player.player_id}`)}
+        />
       </div>
 
       <nav className="tabs" aria-label="Primary">
@@ -41,7 +47,11 @@ export default function TopTabs() {
         <NavLink to="/cards" className={linkClass}>
           Cards
         </NavLink>
-        <button className="tabBtn tabCta" type="button" onClick={() => navigate("/play-by-play")}>
+        <button
+          className="tabBtn tabCta"
+          type="button"
+          onClick={() => navigate("/play-by-play")}
+        >
           Play By Play
         </button>
       </nav>
