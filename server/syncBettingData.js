@@ -13,9 +13,10 @@ const MONGO_URI = process.env.MONGO_URI;
 const API_KEY = process.env.BDL_API_KEY;
 const BASE = process.env.BALLDONTLIE_NFL_BASE_URL || 'https://api.balldontlie.io/nfl/v1';
 
-if (!API_KEY) {
-  console.error('❌ BDL_API_KEY is missing in .env');
-  process.exit(1);
+if (!API_KEY || !BASE) {
+  console.warn('[BALLDONTLIE] Warning: BALLDONTLIE_API_KEY or BALLDONTLIE_NFL_BASE_URL is not set in your .env');
+  console.warn('⏩ Skipping odds and props sync.');
+  process.exit(0);
 }
 
 if (!season || !week) {
