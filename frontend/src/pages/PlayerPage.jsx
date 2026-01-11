@@ -1,6 +1,6 @@
 import { useParams } from "react-router-dom";
 import { useEffect, useState } from "react";
-import PlayerBettingWidget from "../components/PlayerBettingWidget";
+import PlayerBettingWidget from "../components/player/PlayerBettingWidget";
 
 export default function PlayerPage() {
   const { id } = useParams();
