@@ -564,3 +564,83 @@ module.exports = {
   syncTeams,
   syncInjuries,
 };
+
+// Optional: you might need to fetch players by team
+
+// 🚀 Sync players for a single team
+async function syncPlayersForTeam(teamAbbreviation) {
+  console.log(`🔁 Syncing players for team: ${teamAbbreviation}`);
+  const params = {
+    per_page: 100,
+    team: teamAbbreviation
+  };
+
+  const result = await bdlList("/players", params);
+  if (!result?.data || result.data.length === 0) {
+    throw new Error(`No players returned for team ${teamAbbreviation}`);
+  }
+
+  const bulkOps = result.data.map(player => ({
+    updateOne: {
+      filter: { id: player.id },
+      update: { $set: player },
+      upsert: true
+    }
+  }));
+
+  await Player.bulkWrite(bulkOps, { ordered: false });
+  console.log(`✅ Synced ${result.data.length} players for ${teamAbbreviation}`);
+}
+
+// 🚀 Sync players for all teams
+async function syncPlayersAllTeams() {
+  const teams = [
+    { abbreviation: "ARI" },
+    { abbreviation: "ATL" },
+    { abbreviation: "BAL" },
+    { abbreviation: "BUF" },
+    { abbreviation: "CAR" },
+    { abbreviation: "CHI" },
+    { abbreviation: "CIN" },
+    { abbreviation: "CLE" },
+    { abbreviation: "DAL" },
+    { abbreviation: "DEN" },
+    { abbreviation: "DET" },
+    { abbreviation: "GB" },
+    { abbreviation: "HOU" },
+    { abbreviation: "IND" },
+    { abbreviation: "JAX" },
+    { abbreviation: "KC" },
+    { abbreviation: "LV" },
+    { abbreviation: "LAC" },
+    { abbreviation: "LAR" },
+    { abbreviation: "MIA" },
+    { abbreviation: "MIN" },
+    { abbreviation: "NE" },
+    { abbreviation: "NO" },
+    { abbreviation: "NYG" },
+    { abbreviation: "NYJ" },
+    { abbreviation: "PHI" },
+    { abbreviation: "PIT" },
+    { abbreviation: "SEA" },
+    { abbreviation: "SF" },
+    { abbreviation: "TB" },
+    { abbreviation: "TEN" },
+    { abbreviation: "WAS" },
+  ];
+
+  for (const team of teams) {
+    try {
+      await syncPlayersForTeam(team.abbreviation);
+    } catch (err) {
+      console.warn(`⚠️ Failed to sync ${team.abbreviation}: ${err.message}`);
+    }
+  }
+}
+
+// ✅ Export them
+module.exports = {
+  syncPlayers,
+  syncPlayersForTeam,
+  syncPlayersAllTeams
+};

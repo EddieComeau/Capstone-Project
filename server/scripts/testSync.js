@@ -6,24 +6,27 @@ const syncService = require("../services/syncService");
 
 async function testSync(teamArg = "ALL") {
   console.log("🧪 Starting MongoDB Sync Test...\n");
-  // Check env vars
+
+  // Step 1: Check env vars
   console.log("📋 Step 1: Checking environment variables...");
-  const requiredEnvVars = ["MONGO_URI", "BALLDONTLIE_API_KEY"];
-  const optionalEnvVars = ["BALLDONTLIE_NFL_BASE_URL"]; // has default fallback
+  const requiredEnvVars = ["MONGO_URI", "BDL_API_KEY"];
+  const optionalEnvVars = ["BALLDONTLIE_NFL_BASE_URL"];
   const missingVars = requiredEnvVars.filter((varName) => !process.env[varName]);
+
   if (missingVars.length > 0) {
     console.error("❌ Missing required environment variables:", missingVars.join(", "));
     console.error("Please create a .env file with the required variables.");
-    console.error("See .env.example for reference.");
     process.exit(1);
   }
+
   const missingOptional = optionalEnvVars.filter((varName) => !process.env[varName]);
   if (missingOptional.length > 0) {
     console.log("ℹ️  Using defaults for:", missingOptional.join(", "));
   }
+
   console.log("✅ All required environment variables are set\n");
 
-  // Test MongoDB connection
+  // Step 2: MongoDB connection
   console.log("📋 Step 2: Testing MongoDB connection...");
   try {
     await mongoose.connect(process.env.MONGO_URI);
@@ -31,64 +34,24 @@ async function testSync(teamArg = "ALL") {
     console.log(`   Database: ${mongoose.connection.db.databaseName}\n`);
   } catch (error) {
     console.error("❌ MongoDB connection failed:", error.message);
-    console.error("Please ensure MongoDB is running and MONGO_URI is correct.");
     process.exit(1);
   }
 
-  // Test Ball Don't Lie API
-  console.log("📋 Step 3: Testing Ball Don't Lie API access...");
+  // Step 3: Sync players
+  console.log("📋 Step 3: Syncing players from Ball Don't Lie NFL API...\n");
   try {
-    const { bdlList } = require("../utils/apiUtils");
-    const teams = await bdlList("/nfl/v1/teams", { per_page: 1 });
-    console.log("✅ Ball Don't Lie API is accessible\n");
+    if (teamArg === "ALL") {
+      await syncService.syncPlayersAllTeams();
+    } else {
+      await syncService.syncPlayersForTeam(teamArg);
+    }
+    console.log("\n✅ Sync complete");
   } catch (error) {
-    console.error("❌ Ball Don't Lie API access failed:", error.message);
-    console.error("Please check your BALLDONTLIE_API_KEY and base URL.");
-    await mongoose.connection.close();
-    process.exit(1);
+    console.error("❌ Sync failed:", error.message);
   }
 
-  // Step 4: Run the sync
-  const teamArgUp = String(teamArg || "ALL").toUpperCase().trim();
-  if (teamArgUp === "ALL" || teamArgUp === "ALLTEAMS" || teamArgUp === "") {
-    console.log("📋 Step 4: Running full sync for ALL teams...");
-    try {
-      const result = await syncService.syncPlayers();
-      const upserted = result.upsertCount ?? result.synced ?? null;
-      console.log(`✅ Full sync complete. Upserted: ${upserted ?? 'N/A'}, Fetched: ${result.fetched ?? 'N/A'}, Pages: ${result.pages ?? 'N/A'}`);
-    } catch (error) {
-      console.error("❌ Full player sync failed:", error.message);
-      await mongoose.connection.close();
-      process.exit(1);
-    }
-  } else {
-    console.log(`📋 Step 4: Syncing players for team: ${teamArgUp}...`);
-    try {
-      const result = await syncService.syncTeamPlayers(teamArgUp);
-      if (typeof result === 'object' && result !== null) {
-        const upserted = result.upsertCount ?? result.syncedPlayers ?? null;
-        const nextCursor = result.next_cursor ?? result.nextCursor ?? null;
-        console.log(`✅ Successfully synced ${upserted !== null ? upserted : 'N/A'} players for team ${teamArgUp}`);
-        if (nextCursor) console.log(`   Next cursor after sync: ${nextCursor}`);
-      } else {
-        console.log(`✅ Successfully synced ${result} players for team ${teamArgUp}`);
-      }
-    } catch (error) {
-      console.error("❌ Player sync failed:", error.message);
-      await mongoose.connection.close();
-      process.exit(1);
-    }
-  }
-
-  await mongoose.connection.close();
-  console.log("✅ All tests completed. MongoDB sync finished.");
-  console.log("\n🎉 You can now:");
-  console.log("   1. Start the server with: npm start");
-  console.log("   2. Use node scripts/testSync.js <TEAM> to sync a specific team.");
+  mongoose.connection.close();
 }
 
-const teamAbbrev = process.argv[2] || "ALL";
-testSync(teamAbbrev).catch((error) => {
-  console.error("❌ Unexpected error:", error);
-  process.exit(1);
-});
+const arg = process.argv[2];
+testSync(arg);
