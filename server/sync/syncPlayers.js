@@ -1,16 +1,14 @@
 // server/sync/syncPlayers.js
-// Wrapper around server/services/syncService.js
 
-const { syncPlayers: syncPlayersService } = require("../services/syncService");
+const syncService = require("../services/syncService");
 
-/**
- * Sync all players.
- * NOTE: seasons is accepted for compatibility with syncAllButStats.js,
- * but the upstream players endpoint is not season-filtered, so it's unused.
- */
 async function syncPlayers(seasons = []) {
+  if (typeof syncService.syncPlayers !== "function") {
+    throw new Error("syncService.syncPlayers is not defined — check syncService exports");
+  }
+
   console.log("🔁 wrapper syncPlayers starting...");
-  await syncPlayersService();
+  await syncService.syncPlayers();
   console.log("✅ wrapper syncPlayers complete");
 }
 

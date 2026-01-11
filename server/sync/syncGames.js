@@ -1,14 +1,14 @@
 // server/sync/syncGames.js
-// Wrapper around server/services/syncService.js
 
-const { syncGames: syncGamesService } = require("../services/syncService");
+const syncService = require("../services/syncService");
 
-/**
- * Sync games for the given seasons array (e.g., [2025, 2024]).
- */
 async function syncGames(seasons = []) {
+  if (typeof syncService.syncGames !== "function") {
+    throw new Error("syncService.syncGames is not defined — check syncService exports");
+  }
+
   console.log("🔁 wrapper syncGames starting...");
-  await syncGamesService({ seasons });
+  await syncService.syncGames({ seasons });
   console.log("✅ wrapper syncGames complete");
 }
 

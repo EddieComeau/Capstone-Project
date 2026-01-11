@@ -1,16 +1,14 @@
 // server/sync/syncInjuries.js
-// Wrapper around server/services/syncService.js
 
-const { syncInjuries: syncInjuriesService } = require("../services/syncService");
+const syncService = require("../services/syncService");
 
-/**
- * Sync injuries.
- * NOTE: seasons is accepted for compatibility, but injuries are not
- * typically season-filtered in the API calls used here, so it's unused.
- */
 async function syncInjuries(seasons = []) {
+  if (typeof syncService.syncInjuries !== "function") {
+    throw new Error("syncService.syncInjuries is not defined — check syncService exports");
+  }
+
   console.log("🔁 wrapper syncInjuries starting...");
-  await syncInjuriesService();
+  await syncService.syncInjuries();
   console.log("✅ wrapper syncInjuries complete");
 }
 
