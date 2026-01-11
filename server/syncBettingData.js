@@ -14,7 +14,7 @@ const API_KEY = process.env.BDL_API_KEY;
 const BASE = process.env.BALLDONTLIE_NFL_BASE_URL || 'https://api.balldontlie.io/nfl/v1';
 
 if (!API_KEY || !BASE) {
-  console.warn('[BALLDONTLIE] Warning: BALLDONTLIE_API_KEY or BALLDONTLIE_NFL_BASE_URL is not set in your .env');
+  console.warn('[BALLDONTLIE] Warning: BDL_API_KEY or BALLDONTLIE_NFL_BASE_URL is not set in your .env');
   console.warn('⏩ Skipping odds and props sync.');
   process.exit(0);
 }
