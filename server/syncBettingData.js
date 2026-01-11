@@ -5,23 +5,14 @@ const axios = require('axios');
 const BettingProp = require('./models/BettingProp');
 const Odds = require('./models/Odds');
 
-const args = minimist(process.argv.slice(2));
-const season = Number(args.season);
-const week = Number(args.week);
-
 const MONGO_URI = process.env.MONGO_URI;
 const API_KEY = process.env.BDL_API_KEY;
 const BASE = process.env.BALLDONTLIE_NFL_BASE_URL || 'https://api.balldontlie.io/nfl/v1';
 
 if (!API_KEY || !BASE) {
-  console.warn('[BALLDONTLIE] Warning: BDL_API_KEY or BALLDONTLIE_NFL_BASE_URL is not set in your .env');
+  console.warn('[BDL] Warning: BDL_API_KEY or BALLDONTLIE_NFL_BASE_URL is not set in your .env');
   console.warn('⏩ Skipping odds and props sync.');
   process.exit(0);
-}
-
-if (!season || !week) {
-  console.error('❌ season and week are required');
-  process.exit(1);
 }
 
 const api = axios.create({
@@ -36,91 +27,75 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function main() {
+async function runSync({ season, week }) {
+  if (!season || !week) {
+    console.error('❌ season and week are required');
+    process.exit(1);
+  }
+
   try {
-    await mongoose.connect(MONGO_URI);
-    console.log('✅ Connected to MongoDB');
-    console.log(`📡 API Base: ${BASE}`);
-
-    // --- Get games ---
-    const { data: gamesResponse } = await api.get('/games', {
-      params: { season, week },
+    await mongoose.connect(MONGO_URI, {
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
     });
-    const games = gamesResponse?.data || [];
+    console.log('✅ Connected to MongoDB');
+    console.log('📡 API Base:', BASE);
 
-    if (!games.length) {
-      console.log('⚠️ No games found');
-      return;
-    }
+    const gamesRes = await api.get('/games', {
+      params: { seasons: [season], weeks: [week], per_page: 100 },
+    });
 
+    const games = gamesRes.data.data || [];
     console.log(`🎯 Found ${games.length} games`);
 
-    // --- Get odds once for the week ---
-    try {
-      const { data: oddsRes } = await api.get('/odds', {
-        params: { season, week },
-      });
+    let syncedProps = 0;
+    let syncedOdds = 0;
 
-      for (const o of oddsRes?.data || []) {
-        o.synced_at = new Date();
-        await Odds.updateOne(
-          { game_id: o.game_id, vendor: o.vendor },
-          o,
-          { upsert: true }
-        );
-      }
+    for (const game of games) {
+      const gameId = game.id;
 
-      console.log(`✅ Odds synced for ${oddsRes?.data?.length || 0} entries`);
-    } catch (err) {
-      logAxiosError('odds', err);
-    }
+      try {
+        const [propsRes, oddsRes] = await Promise.allSettled([
+          api.get(`/player-props?game_id=${gameId}`),
+          api.get(`/odds?game_id=${gameId}`),
+        ]);
 
-    // --- Batch player-props by game_ids ---
-    const gameIds = games.map((g) => g.id);
-    try {
-      const { data: propsRes } = await api.get('/player-props', {
-        params: { 'game_ids[]': gameIds },
-      });
+        if (propsRes.status === 'fulfilled') {
+          const props = propsRes.value.data || [];
+          if (props.length) {
+            await BettingProp.insertMany(props);
+            syncedProps += props.length;
+          }
+        }
 
-      const props = propsRes?.data || [];
-      console.log(`✅ Props fetched: ${props.length}`);
+        if (oddsRes.status === 'fulfilled') {
+          const odds = oddsRes.value.data || [];
+          if (odds.length) {
+            await Odds.insertMany(odds);
+            syncedOdds += odds.length;
+          }
+        }
 
-      for (const p of props) {
-        p.synced_at = new Date();
-        await BettingProp.updateOne(
-          {
-            game_id: p.game_id,
-            player_id: p.player_id,
-            vendor: p.vendor,
-            prop: p.prop,
-          },
-          p,
-          { upsert: true }
-        );
-      }
-
-      console.log(`✅ Props synced for ${props.length} entries`);
-    } catch (err) {
-      if (err.response?.status === 404) {
-        console.log(`ℹ️ No props for any of the games`);
-      } else {
-        logAxiosError('player-props', err);
+        await sleep(300);
+      } catch (err) {
+        console.warn(`⚠️ Failed to sync game ${gameId}: ${err.message}`);
       }
     }
 
-    await mongoose.disconnect();
+    console.log(`✅ Props synced: ${syncedProps}`);
+    console.log(`✅ Odds synced: ${syncedOdds}`);
     console.log('🎉 Betting sync complete');
-  } catch (err) {
-    console.error('❌ Fatal sync error:', err.message);
+  } catch (error) {
+    console.error('❌ Sync failed:', error.message);
     process.exit(1);
+  } finally {
+    await mongoose.disconnect();
   }
 }
 
-function logAxiosError(label, err) {
-  console.error(`❌ ${label} request failed`);
-  console.error('STATUS:', err.response?.status);
-  console.error('URL:', err.config?.baseURL + err.config?.url);
-  console.error('DATA:', err.response?.data);
+if (require.main === module) {
+  const args = minimist(process.argv.slice(2));
+  const season = Number(args.season);
+  const week = Number(args.week);
+  runSync({ season, week });
 }
-
-main();
