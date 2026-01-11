@@ -1,12 +1,12 @@
 // server/services/sportsdataService.js
 
-const axios = require("axios");
+const axios = require('axios');
 
 const BASE_URL = process.env.BALLDONTLIE_NFL_BASE_URL;
-const API_KEY = process.env.BDL_API_KEY || process.env.BALLDONTLIE_API_KEY;
+const API_KEY  = process.env.BDL_API_KEY || process.env.BALLDONTLIE_API_KEY;
 
 if (!BASE_URL || !API_KEY) {
-  console.warn("[BDL] Warning: BALLDONTLIE_NFL_BASE_URL or API key not set");
+  console.warn('[BDL] Warning: BALLDONTLIE_NFL_BASE_URL or API key not set');
 }
 
 const bdlClient = axios.create({
@@ -18,24 +18,18 @@ const bdlClient = axios.create({
 });
 
 /* -------------------------------------------------------------------------- */
-/*                                   ODDS                                     */
+/*                              Odds and Props                                */
 /* -------------------------------------------------------------------------- */
 
 async function getOddsForGame(gameId) {
   try {
-    const res = await bdlClient.get(`/odds`, {
-      params: { game_id: gameId },
-    });
+    const res = await bdlClient.get(`/odds`, { params: { game_id: gameId } });
     return res.data;
   } catch (err) {
     console.error(`⚠️ Failed to fetch odds for game ${gameId}:`, err.message);
     return null;
   }
 }
-
-/* -------------------------------------------------------------------------- */
-/*                               PLAYER PROPS                                 */
-/* -------------------------------------------------------------------------- */
 
 async function getPropsForGame(gameId) {
   try {
@@ -50,7 +44,7 @@ async function getPropsForGame(gameId) {
 }
 
 /* -------------------------------------------------------------------------- */
-/*                                 INJURIES                                   */
+/*                                Injuries                                    */
 /* -------------------------------------------------------------------------- */
 
 async function getPlayerInjuries({
@@ -61,9 +55,8 @@ async function getPlayerInjuries({
 } = {}) {
   try {
     const params = { per_page };
-
     if (season) params.season = season;
-    if (week) params.week = week;
+    if (week)   params.week   = week;
     if (cursor) params.cursor = cursor;
 
     const res = await bdlClient.get(`/injuries`, { params });
@@ -76,10 +69,6 @@ async function getPlayerInjuries({
     return null;
   }
 }
-
-/* -------------------------------------------------------------------------- */
-/*                                  EXPORTS                                   */
-/* -------------------------------------------------------------------------- */
 
 module.exports = {
   getOddsForGame,

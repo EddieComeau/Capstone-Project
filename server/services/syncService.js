@@ -1,87 +1,167 @@
-/* -------------------------------------------------------------------------- */
-/*                                 INJURIES                                   */
-/* -------------------------------------------------------------------------- */
+const ballDontLieService = require("./ballDontLieService");
+const sportsdata = require("./sportsdataService");
+const Team = require("../models/Team");
+const Player = require("../models/Player");
+const Game = require("../models/Game");
+const Statline = require("../models/Statline");
 
-async function syncInjuries({
-  season,
-  week,
-  per_page = 100,
-} = {}) {
-  if (!season || !week) {
-    throw new Error("syncInjuries requires season and week");
+async function syncTeams() {
+  console.log("🔁 syncTeams starting...");
+
+  const teams = await ballDontLieService.listTeams();
+  console.log(`   Received ${teams.length} teams`);
+
+  for (const team of teams) {
+    await Team.updateOne({ teamId: team.id }, team, { upsert: true });
   }
 
-  console.log(`🔁 syncInjuries starting — season ${season}, week ${week}`);
+  console.log(`✅ syncTeams complete — upserted (approx): ${teams.length}`);
+}
 
-  let cursor = null;
+async function syncPlayers() {
+  console.log("🔁 syncPlayers (ALL TEAMS) starting...");
+  let allPlayers = [];
   let page = 1;
-  let totalFetched = 0;
-  let bulkOps = [];
+  let cursor = null;
 
   while (true) {
-    console.log(
-      `📄 Fetching injuries page ${page} params:`,
-      JSON.stringify({ season, week, per_page, cursor })
-    );
-
-    const injuriesPage = await sportsdata.getPlayerInjuries({
-      season,
-      week,
-      per_page,
+    const params = {
+      per_page: 100,
       cursor,
-    });
+    };
 
-    if (!injuriesPage || !injuriesPage.data?.length) {
-      console.log("   Received 0 injuries");
-      break;
+    const result = await ballDontLieService.listPlayers(params);
+    const players = result?.data || [];
+    if (!players.length) break;
+
+    for (const player of players) {
+      await Player.updateOne({ playerId: player.id }, player, { upsert: true });
     }
 
-    const injuries = injuriesPage.data;
-    const meta = injuriesPage.meta || {};
+    allPlayers.push(...players);
 
-    for (const inj of injuries) {
-      if (!inj?.player?.id) continue;
+    cursor = result.meta?.next_cursor;
+    if (!cursor) break;
+    page++;
+  }
 
-      bulkOps.push({
-        updateOne: {
-          filter: {
-            "player.id": inj.player.id,
-            date: inj.date ? new Date(inj.date) : null,
-          },
-          update: {
-            $set: {
-              player: inj.player,
-              status: inj.status || null,
-              comment: inj.comment || null,
-              date: inj.date ? new Date(inj.date) : null,
-              raw: inj,
-              updatedAt: new Date(),
-            },
-            $setOnInsert: { createdAt: new Date() },
-          },
-          upsert: true,
-        },
-      });
+  console.log(`✅ syncPlayers complete — upserted (approx): ${allPlayers.length}`);
+}
 
-      if (bulkOps.length >= BULK_BATCH_SIZE) {
-        await flushBulkOps(bulkOps, Injury);
-      }
+async function syncGames({ season }) {
+  console.log(`🔁 syncGames starting...`);
+  let allGames = [];
+  let page = 1;
+  let cursor = null;
+
+  while (true) {
+    const params = {
+      per_page: 100,
+      season,
+      cursor,
+    };
+
+    const result = await ballDontLieService.listGames(params);
+    const games = result?.data || [];
+    if (!games.length) break;
+
+    for (const game of games) {
+      await Game.updateOne({ gameId: game.id }, game, { upsert: true });
     }
 
-    await flushBulkOps(bulkOps, Injury);
-
-    totalFetched += injuries.length;
-
-    if (!meta.next_cursor) {
-      console.log("   Next cursor: null (last page)");
-      break;
-    }
-
-    cursor = meta.next_cursor;
+    allGames.push(...games);
+    cursor = result.meta?.next_cursor;
+    if (!cursor) break;
     page++;
   }
 
   console.log(
-    `✅ syncInjuries complete — fetched: ${totalFetched}, pages: ${page}`
+    `✅ syncGames complete — fetched: ${allGames.length}, upserted (approx): ${allGames.length}, pages: ${page}`
   );
 }
+
+async function syncStats({ season }) {
+  console.log(`🔁 syncStats starting...`);
+  let count = 0;
+  let page = 1;
+  let cursor = null;
+
+  while (true) {
+    const params = {
+      per_page: 100,
+      season,
+      cursor,
+    };
+
+    const result = await ballDontLieService.listStats(params);
+    const stats = result?.data || [];
+    if (!stats.length) break;
+
+    for (const stat of stats) {
+      await Statline.updateOne({ statlineId: stat.id }, stat, { upsert: true });
+    }
+
+    count += stats.length;
+    cursor = result.meta?.next_cursor;
+    if (!cursor) break;
+    page++;
+  }
+
+  console.log(`✅ syncStats complete — upserted (approx): ${count}, pages: ${page}`);
+}
+
+async function syncInjuries({ season, week }) {
+  console.log(`🔁 syncInjuries starting — season ${season}, week ${week}`);
+
+  let page = 1;
+  let cursor = null;
+  let allInjuries = [];
+
+  while (true) {
+    const params = {
+      per_page: 100,
+      season,
+      week,
+      cursor,
+    };
+
+    const result = await ballDontLieService.getPlayerInjuries(params);
+    const injuries = result?.data || [];
+    if (!injuries.length) break;
+
+    allInjuries.push(...injuries);
+    cursor = result.meta?.next_cursor;
+    if (!cursor) break;
+    page++;
+  }
+
+  console.log(
+    `✅ syncInjuries complete — fetched: ${allInjuries.length}, pages: ${page}`
+  );
+}
+
+async function syncOddsAndPropsForWeek({ season, week }) {
+  const games = await Game.find({ season, week });
+
+  for (const game of games) {
+    const odds = await ballDontLieService.getOddsForGame(game.gameId);
+    const props = await ballDontLieService.getPropsForGame(game.gameId);
+
+    game.odds = odds || null;
+    game.props = props || null;
+    await game.save();
+  }
+
+  console.log(
+    `✅ Betting data synced for ${games.length} games (season ${season}, week ${week})`
+  );
+}
+
+module.exports = {
+  syncTeams,
+  syncPlayers,
+  syncGames,
+  syncStats,
+  syncInjuries,
+  syncOddsAndPropsForWeek,
+};
