@@ -1,167 +1,167 @@
-const ballDontLieService = require("./ballDontLieService");
-const sportsdata = require("./sportsdataService");
-const Team = require("../models/Team");
-const Player = require("../models/Player");
-const Game = require("../models/Game");
-const Statline = require("../models/Statline");
+const Injury = require('../models/Injury');
+const Game = require('../models/Game');
+const Player = require('../models/Player');
+const Play = require('../models/Play');
+const Stat = require('../models/Stat');
 
-async function syncTeams() {
-  console.log("🔁 syncTeams starting...");
+const sportsdata = require('../config/sportsdata');
+const ballDontLieService = require('./ballDontLieService');
+const { getCurrentSeasonAndWeek } = require('../utils/weekUtils');
 
-  const teams = await ballDontLieService.listTeams();
-  console.log(`   Received ${teams.length} teams`);
+// -------------------
+// INJURIES
+// -------------------
 
-  for (const team of teams) {
-    await Team.updateOne({ teamId: team.id }, team, { upsert: true });
-  }
-
-  console.log(`✅ syncTeams complete — upserted (approx): ${teams.length}`);
-}
-
-async function syncPlayers() {
-  console.log("🔁 syncPlayers (ALL TEAMS) starting...");
-  let allPlayers = [];
+async function syncInjuries(season, week) {
+  const perPage = parseInt(process.env.SYNC_INJURIES_PER_PAGE || 100, 10);
   let page = 1;
-  let cursor = null;
+  let totalSynced = 0;
 
   while (true) {
-    const params = {
-      per_page: 100,
-      cursor,
-    };
+    const injuries = await sportsdata.getInjuries({ season, week, page, perPage });
 
-    const result = await ballDontLieService.listPlayers(params);
-    const players = result?.data || [];
-    if (!players.length) break;
+    if (!injuries || injuries.length === 0) break;
 
-    for (const player of players) {
-      await Player.updateOne({ playerId: player.id }, player, { upsert: true });
-    }
+    const ops = injuries.map((injury) => ({
+      updateOne: {
+        filter: { externalId: injury.id },
+        update: { $set: injury },
+        upsert: true,
+      },
+    }));
 
-    allPlayers.push(...players);
-
-    cursor = result.meta?.next_cursor;
-    if (!cursor) break;
+    await Injury.bulkWrite(ops);
+    totalSynced += injuries.length;
     page++;
   }
 
-  console.log(`✅ syncPlayers complete — upserted (approx): ${allPlayers.length}`);
+  return totalSynced;
 }
 
-async function syncGames({ season }) {
-  console.log(`🔁 syncGames starting...`);
-  let allGames = [];
-  let page = 1;
-  let cursor = null;
+// -------------------
+// ADVANCED STATS
+// -------------------
 
-  while (true) {
-    const params = {
-      per_page: 100,
-      season,
-      cursor,
-    };
-
-    const result = await ballDontLieService.listGames(params);
-    const games = result?.data || [];
-    if (!games.length) break;
-
-    for (const game of games) {
-      await Game.updateOne({ gameId: game.id }, game, { upsert: true });
-    }
-
-    allGames.push(...games);
-    cursor = result.meta?.next_cursor;
-    if (!cursor) break;
-    page++;
-  }
-
-  console.log(
-    `✅ syncGames complete — fetched: ${allGames.length}, upserted (approx): ${allGames.length}, pages: ${page}`
-  );
+async function syncAdvancedRushing(season) {
+  const stats = await ballDontLieService.listAdvancedRushing({ season });
+  return bulkWriteStats(stats);
 }
 
-async function syncStats({ season }) {
-  console.log(`🔁 syncStats starting...`);
-  let count = 0;
-  let page = 1;
-  let cursor = null;
-
-  while (true) {
-    const params = {
-      per_page: 100,
-      season,
-      cursor,
-    };
-
-    const result = await ballDontLieService.listStats(params);
-    const stats = result?.data || [];
-    if (!stats.length) break;
-
-    for (const stat of stats) {
-      await Statline.updateOne({ statlineId: stat.id }, stat, { upsert: true });
-    }
-
-    count += stats.length;
-    cursor = result.meta?.next_cursor;
-    if (!cursor) break;
-    page++;
-  }
-
-  console.log(`✅ syncStats complete — upserted (approx): ${count}, pages: ${page}`);
+async function syncAdvancedPassing(season) {
+  const stats = await ballDontLieService.listAdvancedPassing({ season });
+  return bulkWriteStats(stats);
 }
 
-async function syncInjuries({ season, week }) {
-  console.log(`🔁 syncInjuries starting — season ${season}, week ${week}`);
-
-  let page = 1;
-  let cursor = null;
-  let allInjuries = [];
-
-  while (true) {
-    const params = {
-      per_page: 100,
-      season,
-      week,
-      cursor,
-    };
-
-    const result = await ballDontLieService.getPlayerInjuries(params);
-    const injuries = result?.data || [];
-    if (!injuries.length) break;
-
-    allInjuries.push(...injuries);
-    cursor = result.meta?.next_cursor;
-    if (!cursor) break;
-    page++;
-  }
-
-  console.log(
-    `✅ syncInjuries complete — fetched: ${allInjuries.length}, pages: ${page}`
-  );
+async function syncAdvancedReceiving(season) {
+  const stats = await ballDontLieService.listAdvancedReceiving({ season });
+  return bulkWriteStats(stats);
 }
 
-async function syncOddsAndPropsForWeek({ season, week }) {
+async function bulkWriteStats(stats) {
+  if (!stats || stats.length === 0) return 0;
+
+  const ops = stats.map((stat) => ({
+    updateOne: {
+      filter: { externalId: stat.id },
+      update: { $set: stat },
+      upsert: true,
+    },
+  }));
+
+  const result = await Stat.bulkWrite(ops);
+  return result.upsertedCount + result.modifiedCount;
+}
+
+// -------------------
+// ODDS + PLAYER PROPS
+// -------------------
+
+async function syncOddsAndPropsForWeek(season, week) {
   const games = await Game.find({ season, week });
 
-  for (const game of games) {
-    const odds = await ballDontLieService.getOddsForGame(game.gameId);
-    const props = await ballDontLieService.getPropsForGame(game.gameId);
+  let totalOdds = 0;
+  let totalProps = 0;
 
-    game.odds = odds || null;
-    game.props = props || null;
-    await game.save();
+  for (const game of games) {
+    if (!game.externalId) continue;
+
+    const odds = await sportsdata.getOdds(game.externalId);
+    const props = await sportsdata.getPlayerProps(game.externalId);
+
+    if (odds) {
+      await Game.updateOne(
+        { _id: game._id },
+        { $set: { odds } }
+      );
+      totalOdds++;
+    }
+
+    if (props && Array.isArray(props)) {
+      const propOps = props.map((prop) => ({
+        updateOne: {
+          filter: { externalId: prop.id },
+          update: { $set: { ...prop, game: game._id } },
+          upsert: true,
+        },
+      }));
+      await Player.bulkWrite(propOps);
+      totalProps += props.length;
+    }
   }
 
-  console.log(
-    `✅ Betting data synced for ${games.length} games (season ${season}, week ${week})`
-  );
+  return { odds: totalOdds, props: totalProps };
 }
 
+// -------------------
+// REMAINING PLAYS ONLY
+// -------------------
+
+async function syncRemainingPlays() {
+  const games = await Game.find({ playsFetched: { $ne: true } });
+
+  if (!games.length) {
+    console.log('✅ No games missing plays');
+    return;
+  }
+
+  console.log(`🔍 Found ${games.length} games missing plays`);
+
+  for (const game of games) {
+    try {
+      const plays = await sportsdata.getPlays(game.externalId);
+
+      if (!Array.isArray(plays) || plays.length === 0) {
+        console.warn(`⚠️ No plays returned for game ${game._id}`);
+        continue;
+      }
+
+      const ops = plays.map((play) => ({
+        updateOne: {
+          filter: { externalId: play.id },
+          update: { $set: { ...play, game: game._id } },
+          upsert: true,
+        },
+      }));
+
+      await Play.bulkWrite(ops);
+      await Game.updateOne({ _id: game._id }, { $set: { playsFetched: true } });
+
+      console.log(`✅ Synced ${plays.length} plays for game ${game._id}`);
+    } catch (err) {
+      console.error(`❌ Failed syncing plays for game ${game._id}:`, err.message);
+    }
+  }
+}
+
+// -------------------
+// EXPORTS
+// -------------------
+
 module.exports = {
-  syncTeams,
-  syncPlayers,
-  syncGames,
-  syncStats,
   syncInjuries,
   syncOddsAndPropsForWeek,
+  syncAdvancedRushing,
+  syncAdvancedPassing,
+  syncAdvancedReceiving,
+  syncRemainingPlays,
 };

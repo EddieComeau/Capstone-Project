@@ -1,42 +1,38 @@
-// server/syncBettingData.js
+require('dotenv').config();
 
-const mongoose = require("mongoose");
-const dotenv = require("dotenv");
-dotenv.config();
+const connectDB = require('./config/db');
+const mongoose = require('mongoose');
+const { syncOddsAndPropsForWeek } = require('./services/syncService');
+const { getCurrentSeasonAndWeek } = require('./utils/weekUtils');
 
-const syncService = require("./services/syncService");
+(async () => {
+  const args = process.argv.slice(2);
+  let season, week;
 
-const DEFAULT_SEASON = Number(process.env.SEASON || 2024);
-const DEFAULT_WEEK = Number(process.env.WEEK || 18);
+  if (args.length === 2) {
+    season = parseInt(args[0], 10);
+    week = parseInt(args[1], 10);
+    console.log(`🔁 Syncing betting data for season ${season}, week ${week}`);
+  } else {
+    const current = getCurrentSeasonAndWeek();
+    season = current.season;
+    week = current.week;
+    console.log(`ℹ️ No CLI args passed — using current season/week`);
+    console.log(`🔁 Syncing betting data for season ${season}, week ${week}`);
+  }
 
-// Allow CLI overrides
-const season = Number(process.argv[2]) || DEFAULT_SEASON;
-const week = Number(process.argv[3]) || DEFAULT_WEEK;
-
-if (!season || !week) {
-  console.error("❌ season and week are required");
-  process.exit(1);
-}
-
-async function run() {
-  console.log(`🔁 Syncing betting data for season ${season}, week ${week}`);
+  await connectDB();
+  console.log('✅ Connected to MongoDB');
 
   try {
-    await mongoose.connect(process.env.MONGO_URI, {
-      dbName: process.env.MONGO_DB_NAME || "nfl_cards",
-    });
-
-    console.log("✅ Connected to MongoDB");
-
-    await syncService.syncOddsAndPropsForWeek({ season, week });
-
-    console.log("🎉 Betting sync completed");
+    const result = await syncOddsAndPropsForWeek(season, week);
+    console.log(
+      `✅ Betting data synced — odds: ${result.odds}, props: ${result.props}`
+    );
   } catch (err) {
-    console.error("❌ Betting sync failed:", err.message);
+    console.error('❌ Betting sync failed:', err);
   } finally {
     await mongoose.disconnect();
-    console.log("🔌 MongoDB disconnected");
+    console.log('🔌 MongoDB disconnected');
   }
-}
-
-run();
+})();
