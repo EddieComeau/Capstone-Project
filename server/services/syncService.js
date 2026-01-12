@@ -8,6 +8,12 @@ const PlayerProp = require('../models/PlayerProp');
 const Play = require('../models/Play');
 const Stat = require('../models/Stat');
 
+// Import Team model.  The Team schema maps the Ball Don’t Lie team
+// identifier (id) to the local `ballDontLieTeamId` field and stores
+// additional attributes like name, abbreviation, conference, division,
+// city and fullName.  We use this model when syncing teams from the API.
+const Team = require('../models/Team');
+
 const sportsdata = require('../services/sportsdataService');
 const { bdlList } = require('../utils/apiUtils');
 const { ensureTeam } = require('../utils/teamUtils');
@@ -105,21 +111,105 @@ async function bulkWriteStats(stats) {
 }
 
 async function syncAdvancedRushing(season) {
-  const payload = await bdlList('/nfl/v1/advanced_stats/rushing', { season });
+  const payload = await bdlList('/advanced_stats/rushing', { season });
   const stats = payload && payload.data ? payload.data : [];
   return bulkWriteStats(stats);
 }
 
 async function syncAdvancedPassing(season) {
-  const payload = await bdlList('/nfl/v1/advanced_stats/passing', { season });
+  const payload = await bdlList('/advanced_stats/passing', { season });
   const stats = payload && payload.data ? payload.data : [];
   return bulkWriteStats(stats);
 }
 
 async function syncAdvancedReceiving(season) {
-  const payload = await bdlList('/nfl/v1/advanced_stats/receiving', { season });
+  const payload = await bdlList('/advanced_stats/receiving', { season });
   const stats = payload && payload.data ? payload.data : [];
   return bulkWriteStats(stats);
+}
+
+/**
+ * Synchronize NFL teams from the Ball Don’t Lie API.  This function
+ * paginates through the `/teams` endpoint and upserts each team into
+ * the Team collection keyed by `ballDontLieTeamId`.  The BDL API
+ * returns fields such as id, name, abbreviation, conference, division,
+ * location and full_name.  We map these fields to our schema.  A
+ * cursor parameter is supported for resuming long-running syncs.
+ *
+ * Options:
+ *  - per_page: number of teams per request (default 100, max 100)
+ *  - cursor: starting cursor (useful for resuming)
+ *  - maxPages: maximum number of pages to fetch (default 1000)
+ *
+ * @param {Object} options
+ * @returns {Promise<{upsertCount:number, fetched:number, pages:number, next_cursor:string|null}>}
+ */
+async function syncTeams(options = {}) {
+  const per_page = Number(options.per_page || 100);
+  let cursor = options.cursor || null;
+  let fetched = 0;
+  let upsertCount = 0;
+  const maxPages = Number(options.maxPages || 1000);
+  let pageCount = 0;
+  let previousCursor = null;
+  console.log('🔁 syncTeams starting...');
+  while (pageCount < maxPages) {
+    pageCount++;
+    const params = { per_page };
+    if (cursor) params.cursor = cursor;
+    const payload = await bdlList('/teams', params);
+    const teams = payload && payload.data ? payload.data : [];
+    const meta = payload && payload.meta ? payload.meta : {};
+    fetched += teams.length;
+    const bulkOps = [];
+    for (const t of teams) {
+      if (!t || t.id == null) continue;
+      // Map Ball Don’t Lie fields to our Team schema.  Some fields may be
+      // undefined on the API; default to null or empty strings as appropriate.
+      const update = {
+        ballDontLieTeamId: t.id,
+        name: t.name || '',
+        abbreviation: t.abbreviation || '',
+        conference: t.conference || null,
+        division: t.division || null,
+        city: t.location || t.city || null,
+        fullName: t.full_name || null,
+        logoUrl: t.logo || t.logo_url || null,
+        updatedAt: new Date(),
+      };
+      bulkOps.push({
+        updateOne: {
+          filter: { ballDontLieTeamId: t.id },
+          update: { $set: update, $setOnInsert: { createdAt: new Date() } },
+          upsert: true,
+        },
+      });
+      // Flush bulk operations if we hit the batch size
+      if (bulkOps.length >= BULK_BATCH_SIZE) {
+        const { executed } = await flushBulkOpsForModel(bulkOps, Team);
+        upsertCount += executed;
+      }
+    }
+    // Flush any remaining operations
+    if (bulkOps.length > 0) {
+      const { executed } = await flushBulkOpsForModel(bulkOps, Team);
+      upsertCount += executed;
+    }
+    const nextCursor = meta.next_cursor || meta.nextCursor || null;
+    if (!nextCursor || teams.length === 0) {
+      cursor = nextCursor;
+      break;
+    }
+    // If the cursor did not advance, abort to prevent infinite loop
+    if (cursor && cursor === previousCursor) {
+      console.warn('⚠️ syncTeams cursor did not advance; aborting.');
+      break;
+    }
+    previousCursor = cursor;
+    cursor = nextCursor;
+  }
+  console.log(`✅ syncTeams complete — fetched: ${fetched}, upserted: ${upsertCount}, pages: ${pageCount}`);
+  return { upsertCount, fetched, pages: pageCount, next_cursor: cursor };
 }
 
 /* -------------------------------------------------------------------------- */
@@ -155,7 +245,7 @@ async function syncPlayers(options = {}) {
     pageCount++;
     const params = { per_page };
     if (cursor) params.cursor = cursor;
-    const payload = await bdlList('/nfl/v1/players', params);
+    const payload = await bdlList('/players', params);
     const players = payload && payload.data ? payload.data : [];
     const meta = payload && payload.meta ? payload.meta : {};
     fetched += players.length;
@@ -227,7 +317,7 @@ async function syncTeamPlayers(teamAbbrev) {
     pageCount++;
     const params = { per_page: 100, team_ids: [teamId] };
     if (cursor) params.cursor = cursor;
-    const payload = await bdlList('/nfl/v1/players', params);
+    const payload = await bdlList('/players', params);
     const players = payload && payload.data ? payload.data : [];
     const meta = payload && payload.meta ? payload.meta : {};
     const bulkOps = [];
@@ -298,7 +388,7 @@ async function syncGames(options = {}) {
     pageCount++;
     const params = { per_page };
     if (cursor) params.cursor = cursor;
-    const response = await bdlList('/nfl/v1/games', params);
+    const response = await bdlList('/games', params);
     const games = response && response.data ? response.data : [];
     const meta = response && response.meta ? response.meta : {};
     fetched += games.length;
@@ -372,7 +462,7 @@ async function syncStats(options = {}) {
     pageCount++;
     const params = { per_page };
     if (cursor) params.cursor = cursor;
-    const response = await bdlList('/nfl/v1/stats', params);
+    const response = await bdlList('/stats', params);
     const stats = response && response.data ? response.data : [];
     const meta = response && response.meta ? response.meta : {};
     fetched += stats.length;
@@ -590,16 +680,46 @@ async function syncRemainingPlays() {
         console.warn(`⚠️ No plays returned for game ${game._id}`);
         continue;
       }
-      const ops = plays.map((play) => ({
-        updateOne: {
-          filter: { externalId: play.id },
-          update: { $set: { ...play, game: game._id } },
-          upsert: true,
-        },
-      }));
-      await Play.bulkWrite(ops);
-      await Game.updateOne({ _id: game._id }, { $set: { playsFetched: true } });
-      console.log(`✅ Synced ${plays.length} plays for game ${game._id}`);
+      const ops = plays.map((play) => {
+        // Prepare an update document.  We cast the play id to a string for consistency
+        // since the Ball Don’t Lie API returns play ids as strings.  We also
+        // attach the BDL gameId and persist the raw play data on the `data`
+        // property to avoid polluting the schema with unknown fields.  If the
+        // play id can be parsed as a number, we derive a sequence value; this
+        // preserves ordering but is not required by the schema.
+        const extId = play && play.id != null ? String(play.id) : undefined;
+        const updateDoc = {
+          externalId: extId,
+          gameId: play.game_id || game.gameId,
+          // derive sequence number when possible
+          sequence: !isNaN(Number(play.id)) ? Number(play.id) : undefined,
+          offense: play.offense_team || play.possession_team || play.offense || null,
+          defense: play.defense_team || play.defense || null,
+          quarter: play.period || play.quarter || null,
+          timeRemaining: play.clock || play.time_remaining || null,
+          down: play.start_down || play.down || null,
+          distance: play.start_distance || play.distance || null,
+          type: play.play_type || play.type || null,
+          description: play.short_text || play.text || null,
+          data: play,
+        };
+        // Remove undefined values so Mongoose does not set them explicitly
+        Object.keys(updateDoc).forEach((k) => updateDoc[k] === undefined && delete updateDoc[k]);
+        return {
+          updateOne: {
+            filter: { externalId: extId },
+            update: { $set: updateDoc, $setOnInsert: { game: game._id, createdAt: new Date() } },
+            upsert: true,
+          },
+        };
+      });
+      if (ops.length > 0) {
+        await Play.bulkWrite(ops);
+        await Game.updateOne({ _id: game._id }, { $set: { playsFetched: true } });
+        console.log(`✅ Synced ${ops.length} plays for game ${game._id}`);
+      } else {
+        console.warn(`⚠️ No valid plays to sync for game ${game._id}`);
+      }
     } catch (err) {
       console.error(`❌ Failed syncing plays for game ${game._id}:`, err.message);
     }
@@ -623,4 +743,5 @@ module.exports = {
   syncStats,
   syncWeeklyForTeam,
   syncAllTeamsForWeek,
+  syncTeams,
 };

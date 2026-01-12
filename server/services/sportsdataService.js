@@ -39,7 +39,11 @@ const bdlClient = axios.create({
  */
 async function getOddsForGame(gameId) {
   try {
-    const res = await bdlClient.get(`/odds`, { params: { game_id: gameId } });
+    // The Ball Don’t Lie API expects either season/week or an array of game IDs
+    // under the `game_ids` parameter for the `/odds` endpoint.  Passing
+    // `game_ids` with a single element returns all available odds for that
+    // specific game.  Using `game_id` will result in a 400 error.
+    const res = await bdlClient.get(`/odds`, { params: { game_ids: [gameId] } });
     return res.data;
   } catch (err) {
     console.error(`⚠️ Failed to fetch odds for game ${gameId}:`, err.message);
@@ -60,7 +64,10 @@ async function getOddsForGame(gameId) {
  */
 async function getPropsForGame(gameId) {
   try {
-    const res = await bdlClient.get(`/player-props`, {
+    // Player prop data is served under `/odds/player_props` and requires a
+    // `game_id` parameter.  See BDL documentation for more details:
+    // https://nfl.balldontlie.io/
+    const res = await bdlClient.get(`/odds/player_props`, {
       params: { game_id: gameId },
     });
     return res.data;
