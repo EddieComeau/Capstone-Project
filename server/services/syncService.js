@@ -59,38 +59,71 @@ async function flushBulkOpsForModel(bulkOpsArr, Model) {
  * @param {number} week - Week number (1–18)
  * @returns {Promise<number>} Total number of injury records synced
  */
-async function syncInjuries(seasonOrParams, weekParam) {
-  // Support calling with either positional (season, week) or an object
-  // (e.g., { season: 2025, week: 3 }).  Extract season and week from
-  // whichever form was provided.
-  let season;
-  let week;
-  if (typeof seasonOrParams === 'object' && seasonOrParams !== null) {
-    season = seasonOrParams.season;
-    week = seasonOrParams.week;
-  } else {
-    season = seasonOrParams;
-    week = weekParam;
-  }
+async function syncInjuries(options = {}) {
+  /**
+   * Synchronize current player injuries from the Ball Don’t Lie API.
+   *
+   * The Ball Don’t Lie NFL API exposes player injuries via the
+   * `/player_injuries` endpoint.  Unlike most other endpoints, it does
+   * **not** support filtering by season or week—calling it always
+   * returns the most recent injury information.  If you need to filter
+   * by team or player, you may provide `team_ids` or `player_ids` in
+   * the `options` argument.  See sportsdataService.getPlayerInjuries for
+   * details on the supported parameters.
+   *
+   * Because the API only returns current injuries, this sync will
+   * upsert a single record per player keyed by `bdlId` (the Ball Don’t
+   * Lie player id).  Historical injuries are not preserved; instead,
+   * the existing document for that player is updated with the latest
+   * status, comment and date.  If you require an injury history, you
+   * can modify the upsert filter to include `date` so that each call
+   * writes a new document per injury occurrence.
+   *
+   * @param {Object} options - Optional filters (team_ids, player_ids, per_page, cursor)
+   * @returns {Promise<number>} Total number of injury records synced
+   */
   const perPage = parseInt(process.env.SYNC_INJURIES_PER_PAGE || 100, 10);
-  let cursor = null;
+  let cursor = options.cursor || null;
   let totalSynced = 0;
   while (true) {
-    const injuries = await sportsdata.getPlayerInjuries({ season, week, per_page: perPage, cursor });
-    if (!injuries || !injuries.data || injuries.data.length === 0) {
+    // Fetch current injuries; the endpoint does not accept season/week filters.
+    const injuries = await sportsdata.getPlayerInjuries({
+      team_ids: options.team_ids,
+      player_ids: options.player_ids,
+      per_page: perPage,
+      cursor,
+    });
+    if (!injuries || !Array.isArray(injuries.data) || injuries.data.length === 0) {
       break;
     }
     const data = injuries.data;
     const meta = injuries.meta || {};
-    const ops = data.map((injury) => ({
-      updateOne: {
-        filter: { externalId: injury.id },
-        update: { $set: injury },
-        upsert: true,
-      },
-    }));
-    await Injury.bulkWrite(ops);
-    totalSynced += data.length;
+    const ops = [];
+    for (const injury of data) {
+      if (!injury || !injury.player || injury.player.id == null) {
+        continue;
+      }
+      const bdlId = injury.player.id;
+      const update = {
+        player: injury.player,
+        status: injury.status || null,
+        comment: injury.comment || null,
+        date: injury.date ? new Date(injury.date) : null,
+        bdlId,
+        updatedAt: new Date(),
+      };
+      ops.push({
+        updateOne: {
+          filter: { bdlId },
+          update: { $set: update, $setOnInsert: { createdAt: new Date() } },
+          upsert: true,
+        },
+      });
+    }
+    if (ops.length > 0) {
+      await Injury.bulkWrite(ops);
+      totalSynced += ops.length;
+    }
     cursor = meta.next_cursor || meta.nextCursor || null;
     if (!cursor) break;
   }

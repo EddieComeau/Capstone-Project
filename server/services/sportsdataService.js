@@ -82,26 +82,34 @@ async function getPropsForGame(gameId) {
 /* -------------------------------------------------------------------------- */
 
 /**
- * Retrieve player injury information.  Supports optional season/week and
- * pagination via cursor.
+ * Retrieve current player injury information.  The Ball Don’t Lie API exposes
+ * injuries through the `/player_injuries` endpoint, which returns an array of
+ * currently injured players.  This endpoint does not support season or week
+ * filters; it always returns the latest injuries.  You may optionally
+ * specify `team_ids` or `player_ids` to narrow the results to particular teams
+ * or players, as well as standard pagination parameters.  Because the API
+ * does not return historical injuries, calling this helper weekly is
+ * sufficient to keep your database up to date.
  *
- * @param {Object} options
- * @param {number} options.season - Filter injuries to a particular season
- * @param {number} options.week - Filter injuries to a particular week
+ * @param {Object} [options]
+ * @param {number[]} [options.team_ids] - Array of team ids to filter by
+ * @param {number[]} [options.player_ids] - Array of player ids to filter by
  * @param {number} [options.per_page=100] - Items per page (max 100)
  * @param {string} [options.cursor] - Cursor token for pagination
  * @returns {Promise<Object|null>} The API response data or null on failure.
  */
-async function getPlayerInjuries({ season, week, per_page = 100, cursor = null } = {}) {
+async function getPlayerInjuries({ team_ids, player_ids, per_page = 100, cursor = null } = {}) {
   try {
     const params = { per_page };
-    if (season) params.season = season;
-    if (week)   params.week   = week;
+    // Filter by team ids or player ids if provided.  The API expects arrays.
+    if (team_ids && Array.isArray(team_ids) && team_ids.length > 0) params.team_ids = team_ids;
+    if (player_ids && Array.isArray(player_ids) && player_ids.length > 0) params.player_ids = player_ids;
     if (cursor) params.cursor = cursor;
-    const res = await bdlClient.get(`/injuries`, { params });
+    // Use the `/player_injuries` endpoint as documented: https://nfl.balldontlie.io/
+    const res = await bdlClient.get(`/player_injuries`, { params });
     return res.data;
   } catch (err) {
-    console.warn(`⚠️ Failed to fetch injuries for season ${season}, week ${week}:`, err.message);
+    console.warn(`⚠️ Failed to fetch player injuries:`, err.message);
     return null;
   }
 }
