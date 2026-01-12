@@ -59,11 +59,22 @@ async function flushBulkOpsForModel(bulkOpsArr, Model) {
  * @param {number} week - Week number (1–18)
  * @returns {Promise<number>} Total number of injury records synced
  */
-async function syncInjuries(season, week) {
+async function syncInjuries(seasonOrParams, weekParam) {
+  // Support calling with either positional (season, week) or an object
+  // (e.g., { season: 2025, week: 3 }).  Extract season and week from
+  // whichever form was provided.
+  let season;
+  let week;
+  if (typeof seasonOrParams === 'object' && seasonOrParams !== null) {
+    season = seasonOrParams.season;
+    week = seasonOrParams.week;
+  } else {
+    season = seasonOrParams;
+    week = weekParam;
+  }
   const perPage = parseInt(process.env.SYNC_INJURIES_PER_PAGE || 100, 10);
   let cursor = null;
   let totalSynced = 0;
-
   while (true) {
     const injuries = await sportsdata.getPlayerInjuries({ season, week, per_page: perPage, cursor });
     if (!injuries || !injuries.data || injuries.data.length === 0) {
@@ -375,6 +386,33 @@ async function syncTeamPlayers(teamAbbrev) {
  * @param {Object} options - { per_page, cursor, maxPages }
  * @returns {Promise<{upsertCount:number, fetched:number, pages:number, next_cursor:string|null}>}
  */
+/**
+ * Synchronize games from the Ball Don’t Lie API.  This function paginates
+ * through the `/games` endpoint and upserts each game into the Game
+ * collection keyed by `gameId`.  You can filter which games are synced by
+ * passing additional options:
+ *
+ *  - season or seasons: single number or array of season years (e.g., 2025)
+ *  - week or weeks: single week number or array of week numbers (1–18)
+ *  - postseason: boolean flag; true for playoff games, false for regular season.
+ *  - per_page: number of games per request (default 100, max 100)
+ *  - cursor, maxPages: control pagination
+ *
+ * If no filters are provided, all games across all seasons will be synced.
+ *
+ * @param {Object} options
+ * @param {number|number[]} [options.seasons] - Season year(s) to fetch
+ * @param {number} [options.season] - Alias for a single season
+ * @param {number|number[]} [options.weeks] - Week number(s) to fetch
+ * @param {number} [options.week] - Alias for a single week
+ * @param {boolean} [options.postseason] - Fetch only postseason games when true,
+ *                                         only regular season games when false,
+ *                                         or both when undefined.
+ * @param {number} [options.per_page=100] - Results per page (max 100)
+ * @param {string} [options.cursor] - Starting cursor for pagination
+ * @param {number} [options.maxPages=1000] - Maximum number of pages to fetch
+ * @returns {Promise<{upsertCount:number,fetched:number,pages:number,next_cursor:string|null}>}
+ */
 async function syncGames(options = {}) {
   const per_page = Number(options.per_page || 100);
   let cursor = options.cursor || null;
@@ -387,6 +425,28 @@ async function syncGames(options = {}) {
   while (pageCount < maxPages) {
     pageCount++;
     const params = { per_page };
+    // apply filters: seasons/season
+    if (options.seasons) {
+      // ensure array
+      params.seasons = Array.isArray(options.seasons)
+        ? options.seasons
+        : [options.seasons];
+    } else if (options.season) {
+      params.seasons = [options.season];
+    }
+    // weeks/week filter
+    if (options.weeks) {
+      params.weeks = Array.isArray(options.weeks)
+        ? options.weeks
+        : [options.weeks];
+    } else if (options.week) {
+      params.weeks = [options.week];
+    }
+    // postseason flag
+    if (typeof options.postseason === 'boolean') {
+      params.postseason = options.postseason;
+    }
+    // cursor for pagination
     if (cursor) params.cursor = cursor;
     const response = await bdlList('/games', params);
     const games = response && response.data ? response.data : [];
@@ -403,8 +463,10 @@ async function syncGames(options = {}) {
         status: g.status || null,
         home_team: g.home_team || null,
         visitor_team: g.visitor_team || null,
-        home_score: g.home_team_score != null ? g.home_team_score : g.home_score,
-        visitor_score: g.visitor_team_score != null ? g.visitor_team_score : g.visitor_score,
+        home_score:
+          g.home_team_score != null ? g.home_team_score : g.home_score,
+        visitor_score:
+          g.visitor_team_score != null ? g.visitor_team_score : g.visitor_score,
         raw: g,
         updatedAt: new Date(),
       };
@@ -436,7 +498,9 @@ async function syncGames(options = {}) {
     previousCursor = cursor;
     cursor = nextCursor;
   }
-  console.log(`✅ syncGames complete — fetched: ${fetched}, upserted: ${upsertCount}, pages: ${pageCount}`);
+  console.log(
+    `✅ syncGames complete — fetched: ${fetched}, upserted: ${upsertCount}, pages: ${pageCount}`
+  );
   return { upsertCount, fetched, pages: pageCount, next_cursor: cursor };
 }
 
