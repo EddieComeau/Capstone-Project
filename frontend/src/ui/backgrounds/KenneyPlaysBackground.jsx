@@ -1,5 +1,14 @@
 import PlayRoutesOverlay from "../overlays/PlayRoutesOverlay";
 
+/**
+ * Kenney sprite-based background for play diagrams.  This component draws
+ * a retro football field using Kenney art sprites loaded from `/kenney/*` in
+ * the public directory.  It supports drawing players at arbitrary positions
+ * with customizable team colors.  If a player object includes a `color` property
+ * (e.g. passed from HomePage), that color will be used for the helmet and
+ * uniform; otherwise it falls back to blue/red for home/away helmets and
+ * lightblue/pink for uniforms.
+ */
 export default function KenneyPlaysBackground({
   highlightYardLines = [],
   routes = [],
@@ -15,7 +24,7 @@ export default function KenneyPlaysBackground({
     <div
       className="kenneyBg"
       style={{
-        backgroundImage: "url('/kenney/football_field.png')", // PNG football field
+        backgroundImage: "url('/kenney/football_field.png')",
         backgroundSize: "cover",
         backgroundPosition: "center",
       }}
@@ -52,10 +61,10 @@ export default function KenneyPlaysBackground({
         {/* Players */}
         {players.map((player, index) => (
           <g key={`player-${index}`} transform={`translate(${player.cx}, ${player.cy})`}>
-            {/* Helmet */}
+            {/* Helmet: support custom helmet asset via player.helmet and color override */}
             <use
-              href="/kenney/charactersEquipment.svg#helmet"
-              fill={player.team === "home" ? "blue" : "red"} // Team color
+              href={player.helmet || "/kenney/charactersEquipment.svg#helmet"}
+              fill={player.color || (player.team === "home" ? "blue" : "red")}
               width="4"
               height="4"
               x="-2"
@@ -64,7 +73,7 @@ export default function KenneyPlaysBackground({
             {/* Uniform */}
             <use
               href="/kenney/charactersEquipment.svg#uniform"
-              fill={player.team === "home" ? "lightblue" : "pink"} // Team color
+              fill={player.color || (player.team === "home" ? "lightblue" : "pink")}
               width="4"
               height="4"
               x="-2"
@@ -88,7 +97,7 @@ export default function KenneyPlaysBackground({
           className="downMarker"
           cx={downMarker.cx}
           cy={downMarker.cy}
-          r={1.5} // Marker size
+          r={1.5}
           fill="orange"
         />
 
@@ -97,7 +106,7 @@ export default function KenneyPlaysBackground({
           className="conversionMarker"
           cx={conversionMarker.cx}
           cy={conversionMarker.cy}
-          r={1.5} // Marker size
+          r={1.5}
           fill="green"
         />
 

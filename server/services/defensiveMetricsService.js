@@ -1,4 +1,3 @@
-// server/services/defensiveMetricsService.js
 const Player = require("../models/Player");
 const DefensiveMetrics = require("../models/DefensiveMetrics");
 const {
@@ -6,11 +5,9 @@ const {
   getPlayerSnapCountsByTeam,
 } = require("./sportsdataService");
 
-/**
- * Basic heuristic to identify mainly-defensive players.
- */
+// Determine if a player's position is defensive
 function isDefensivePosition(pos) {
-  const DEF_POSITIONS = [
+  const DEF_POS = [
     "S",
     "FS",
     "SS",
@@ -25,13 +22,10 @@ function isDefensivePosition(pos) {
     "DT",
     "NT",
   ];
-  return DEF_POSITIONS.includes((pos || "").toUpperCase());
+  return DEF_POS.includes((pos || "").toUpperCase());
 }
 
-/**
- * Map BALLDONTLIE stat row to simple defensive metrics.
- * Adjust field names to match docs once you inspect NFL stats schema.
- */
+// Map a BDL stats row to our defensive metrics structure
 function mapDefensiveStatsRow(row) {
   return {
     tackles: {
@@ -56,45 +50,39 @@ function mapDefensiveStatsRow(row) {
   };
 }
 
-async function computeAndSaveDefensiveMetricsForTeam(
-  season,
-  week,
-  teamAbbrev
-) {
-  const team = teamAbbrev.toUpperCase();
-
+/**
+ * Compute and save defensive metrics for a team/season/week.
+ */
+async function computeAndSaveDefensiveMetricsForTeam(season, week, teamAbbrev) {
+  const team = String(teamAbbrev || "").toUpperCase();
   const [stats, snaps, players] = await Promise.all([
     getPlayerGameStatsByTeam(season, week, team),
     getPlayerSnapCountsByTeam(season, week, team),
-    Player.find({ Team: team }),
+    Player.find({ "team.abbreviation": team }),
   ]);
-
   const playerById = new Map();
-  players.forEach((p) => playerById.set(p.PlayerID, p));
-
+  players.forEach((p) => {
+    const id = p.PlayerID || p.bdlId;
+    playerById.set(id, p);
+  });
   const snapsByPlayerId = new Map();
   snaps.forEach((s) => {
     if (!s.player_id) return;
     snapsByPlayerId.set(s.player_id, s.snaps || null);
   });
-
   const results = [];
-
   for (const row of stats) {
     const playerId = row.player?.id;
-    const teamAbbr = row.team?.abbreviation?.toUpperCase();
-    if (!playerId || teamAbbr !== team) continue;
-
-    const playerDoc = playerById.get(playerId);
-    if (!playerDoc || !isDefensivePosition(playerDoc.Position)) continue;
-
+    const rowTeam = row.team?.abbreviation?.toUpperCase();
+    if (!playerId || rowTeam !== team) continue;
+    const p = playerById.get(playerId);
+    if (!p || !isDefensivePosition(p.position)) continue;
     const mapped = mapDefensiveStatsRow(row);
-
     const update = {
-      player: playerDoc._id,
+      player: p._id,
       PlayerID: playerId,
       Team: team,
-      Position: playerDoc.Position,
+      Position: (p.position || "").toUpperCase(),
       season,
       week,
       snaps: {
@@ -106,39 +94,43 @@ async function computeAndSaveDefensiveMetricsForTeam(
       tackling: mapped.tackles,
       passRush: mapped.passRush,
     };
-
     const doc = await DefensiveMetrics.findOneAndUpdate(
-      { player: playerDoc._id, season, week },
+      { player: p._id, season, week },
       update,
       { new: true, upsert: true }
     );
     results.push(doc);
   }
-
   return results;
 }
 
+/**
+ * Retrieve defensive cards for a team and format them.
+ */
 async function getDefensiveCardsFromDb(season, week, teamAbbrev) {
-  const team = teamAbbrev.toUpperCase();
-  const metrics = await DefensiveMetrics.find({
-    Team: team,
-    season,
-    week,
-  }).populate("player");
-
-  return metrics.map((d) => ({
-    cardType: "defense",
-    playerId: d.player?._id,
-    PlayerID: d.PlayerID,
-    name: d.player?.FullName,
-    team: d.Team,
-    position: d.Position,
-    photo: d.player?.PhotoUrl,
-    snaps: d.snaps,
-    coverage: d.coverage,
-    tackling: d.tackling,
-    passRush: d.passRush,
-  }));
+  const team = String(teamAbbrev || "").toUpperCase();
+  const metrics = await DefensiveMetrics.find({ Team: team, season, week }).populate(
+    "player"
+  );
+  return metrics.map((d) => {
+    const p = d.player;
+    const name =
+      p?.full_name || `${p?.first_name ?? ""} ${p?.last_name ?? ""}`.trim();
+    const photo = p?.raw?.photoUrl || p?.raw?.headshot_url || null;
+    return {
+      cardType: "defense",
+      playerId: p?._id,
+      PlayerID: d.PlayerID,
+      name,
+      team: d.Team,
+      position: d.Position,
+      photo,
+      snaps: d.snaps,
+      coverage: d.coverage,
+      tackling: d.tackling,
+      passRush: d.passRush,
+    };
+  });
 }
 
 module.exports = {

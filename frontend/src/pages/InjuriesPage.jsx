@@ -1,6 +1,7 @@
 import { useMemo, useState, useEffect } from "react";
 import { apiGet } from "../lib/api";
 import "./InjuriesPage.css";
+import { TEAM_LIST } from "../data/teamOptions";
 
 export default function InjuriesPage() {
   // Current injuries fetched from the backend.  We initialise with an empty array
@@ -92,12 +93,17 @@ export default function InjuriesPage() {
             value={form.player}
             onChange={(e) => setForm({ ...form, player: e.target.value })}
           />
-          <input
-            type="text"
-            placeholder="Team"
+          <select
             value={form.team}
             onChange={(e) => setForm({ ...form, team: e.target.value })}
-          />
+          >
+            <option value="">Team</option>
+            {TEAM_LIST.map((t) => (
+              <option key={t.abbr} value={t.abbr}>
+                {t.name}
+              </option>
+            ))}
+          </select>
           <select
             value={form.status}
             onChange={(e) => setForm({ ...form, status: e.target.value })}
@@ -165,5 +171,3 @@ export default function InjuriesPage() {
     </div>
   );
 }
-
-// Removed sample injuries; data now comes from the backend via apiGet

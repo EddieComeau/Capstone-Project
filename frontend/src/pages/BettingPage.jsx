@@ -4,6 +4,18 @@ import { useEffect, useState } from "react";
 import PlayerSearchInput from "../components/PlayerSearchInput";
 import WeekPicker from "../components/WeekPicker";
 
+/**
+ * BettingPage
+ *
+ * This page displays betting odds and player props.  It has been updated to be
+ * more user‑friendly by replacing the free‑text "Game ID" input with a
+ * game selector.  When the user picks a season and week via the WeekPicker,
+ * the page fetches the list of scheduled games from the server (via
+ * `/api/games`).  The user can then select a matchup from a dropdown and the
+ * Game ID will be set automatically.  Player search and props remain
+ * unchanged.
+ */
+
 export default function BettingPage() {
   const [odds, setOdds] = useState([]);
   const [props, setProps] = useState([]);
@@ -11,6 +23,10 @@ export default function BettingPage() {
   const [loading, setLoading] = useState(false);
   const [syncedAt, setSyncedAt] = useState(null);
   const [selectedPlayer, setSelectedPlayer] = useState(null);
+
+  // List of games for the selected season/week
+  const [games, setGames] = useState([]);
+  const [loadingGames, setLoadingGames] = useState(false);
 
   // Filters now include season/week controlled via WeekPicker
   const [filters, setFilters] = useState({
@@ -83,9 +99,38 @@ export default function BettingPage() {
     setFilters((prev) => ({ ...prev, [field]: value }));
   }
 
+  // Load games whenever the season or week changes
+  useEffect(() => {
+    async function loadGames() {
+      // Require both season and week to fetch games
+      if (!filters.season || !filters.week) {
+        setGames([]);
+        return;
+      }
+      try {
+        setLoadingGames(true);
+        const params = new URLSearchParams({
+          season: filters.season,
+          week: filters.week,
+          per_page: "100",
+        }).toString();
+        const res = await fetch(`/api/games?${params}`);
+        const json = await res.json();
+        setGames(json?.data || []);
+      } catch (e) {
+        console.error("Failed to fetch games:", e);
+        setGames([]);
+      } finally {
+        setLoadingGames(false);
+      }
+    }
+    loadGames();
+    // do not include filters.gameId in the dependency array to avoid refetching on game selection
+  }, [filters.season, filters.week]);
+
   return (
     <div style={{ padding: 16 }}>
-      <h2>Betting Odds & Player Props</h2>
+      <h2>Betting Odds &amp; Player Props</h2>
 
       {/* Filters */}
       <div
@@ -102,11 +147,23 @@ export default function BettingPage() {
             updateFilter("playerId", player.player_id);
           }}
         />
-        <input
-          placeholder="Game ID"
+        {/* Game selector: choose from games fetched for the selected season/week */}
+        <select
           value={filters.gameId}
           onChange={(e) => updateFilter("gameId", e.target.value)}
-        />
+          disabled={loadingGames || games.length === 0}
+        >
+          <option value="">Select Game</option>
+          {games.map((g) => {
+            const home = g.home_team?.abbreviation || "HOME";
+            const away = g.visitor_team?.abbreviation || "AWAY";
+            return (
+              <option key={g.id} value={g.id}>
+                {away} @ {home}
+              </option>
+            );
+          })}
+        </select>
         <input
           placeholder="Season"
           value={filters.season}

@@ -1,58 +1,83 @@
 const express = require("express");
 const router = express.Router();
+// When copied into your `server/routes` directory, this path resolves correctly.
 const Player = require("../models/Player");
 
-// Lookup player by ID
+// GET /api/players/:id
+// Return a single player record.  Accepts either the legacy PlayerID or the BDL ID.
 router.get("/:id", async (req, res) => {
   try {
-    const playerId = parseInt(req.params.id);
-    if (!playerId) return res.status(400).json({ ok: false, error: "Invalid ID" });
+    const id = req.params.id;
+    // Accept numeric strings and convert to Number; fall back to string for ObjectId
+    const numericId = Number(id);
+    const query = {};
+    if (!Number.isNaN(numericId)) {
+      // Try to match either PlayerID or bdlId
+      query.$or = [{ PlayerID: numericId }, { bdlId: numericId }];
+    } else {
+      // Final fallback: attempt by Mongo ObjectId (unlikely to be used for players)
+      query._id = id;
+    }
 
-    const player = await Player.findOne({ player_id: playerId }).lean();
+    const player = await Player.findOne(query).lean();
     if (!player) return res.status(404).json({ ok: false, error: "Player not found" });
 
-    res.json({
+    const response = {
       ok: true,
       player: {
-        full_name: `${player.first_name} ${player.last_name}`,
-        team_abbr: player.team_abbr,
+        id: player.PlayerID || player.bdlId || player._id?.toString(),
+        player_id: player.PlayerID || player.bdlId || null,
+        PlayerID: player.PlayerID || player.bdlId || null,
+        first_name: player.first_name,
+        last_name: player.last_name,
+        full_name: player.full_name,
         position: player.position,
-        player_id: player.player_id,
-        jersey_number: player.jersey_number,
+        team_abbr: player.team?.abbreviation || null,
+        team: player.team?.abbreviation || null,
+        jersey_number: player.raw?.jersey_number || null,
       },
-    });
+    };
+    res.json(response);
   } catch (e) {
     console.error("player lookup error:", e.message);
     res.status(500).json({ ok: false, error: "Failed to lookup player" });
   }
 });
 
-// Autocomplete player search
-// GET /api/players/search?q=kel
+// GET /api/players/search?q=...
+// Autocomplete player search.  Returns both modern and legacy fields for compatibility with the frontend.
 router.get("/search", async (req, res) => {
-  const q = (req.query.q || "").trim().toLowerCase();
-  if (!q || q.length < 2) {
-    return res.json({ ok: true, results: [] });
-  }
+  const q = String(req.query.q || "").trim();
+  if (q.length < 2) return res.json({ ok: true, results: [] });
 
   try {
-    const results = await Player.find({
+    const regex = new RegExp(q, "i");
+    const players = await Player.find({
       $or: [
-        { full_name: { $regex: q, $options: "i" } },
-        { first_name: { $regex: q, $options: "i" } },
-        { last_name: { $regex: q, $options: "i" } },
+        { full_name: regex },
+        { first_name: regex },
+        { last_name: regex },
       ],
     })
       .limit(15)
       .lean();
 
-    const formatted = results.map((p) => ({
-      player_id: p.player_id,
-      full_name: `${p.first_name} ${p.last_name}`,
-      team_abbr: p.team_abbr,
-    }));
-
-    res.json({ ok: true, results: formatted });
+    const results = players.map((p) => {
+      const id = p.PlayerID || p.bdlId || p._id?.toString();
+      return {
+        id,
+        player_id: id, // legacy alias
+        PlayerID: id,
+        first_name: p.first_name,
+        last_name: p.last_name,
+        full_name: p.full_name,
+        position: p.position,
+        team_abbr: p.team?.abbreviation || null,
+        team: p.team?.abbreviation || null,
+        jersey_number: p.raw?.jersey_number || null,
+      };
+    });
+    res.json({ ok: true, results });
   } catch (e) {
     console.error("Player search error:", e.message);
     res.status(500).json({ ok: false, error: "Search failed" });

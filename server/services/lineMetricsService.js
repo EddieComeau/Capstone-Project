@@ -1,9 +1,8 @@
-// server/services/lineMetricsService.js
 const Player = require("../models/Player");
 const LineMetrics = require("../models/LineMetrics");
 
 /**
- * Identify offensive linemen by position code.
+ * Check if a position code belongs to an offensive line position.
  */
 function isOLinePosition(pos) {
   const OLINE_POSITIONS = ["C", "G", "OG", "OT", "T", "LT", "RT", "LG", "RG"];
@@ -11,24 +10,24 @@ function isOLinePosition(pos) {
 }
 
 /**
- * Very rough placeholder: one LineMetrics row per OL, mostly using snaps
- * & position to build a basic card. You can plug in real data when you
- * get line-specific stats.
+ * Compute basic line metrics for a team for a given season/week.
+ * Ensures players are queried using the nested team.abbreviation and lowercase position
+ * from the Player model.
  */
 async function computeAndSaveLineMetricsForTeam(season, week, teamAbbrev) {
-  const team = teamAbbrev.toUpperCase();
+  const team = String(teamAbbrev || "").toUpperCase();
 
-  const players = await Player.find({ Team: team });
-  const ol = players.filter((p) => isOLinePosition(p.Position));
+  // Find players on the specified team (using nested field)
+  const players = await Player.find({ "team.abbreviation": team });
+  const linemen = players.filter((p) => isOLinePosition(p.position));
 
   const results = [];
-
-  for (const p of ol) {
+  for (const p of linemen) {
     const update = {
       player: p._id,
-      PlayerID: p.PlayerID,
+      PlayerID: p.PlayerID || p.bdlId,
       Team: team,
-      Position: p.Position,
+      Position: (p.position || "").toUpperCase(),
       season,
       week,
       lineGrade: {
@@ -42,42 +41,41 @@ async function computeAndSaveLineMetricsForTeam(season, week, teamAbbrev) {
         pass: null,
       },
     };
-
     const doc = await LineMetrics.findOneAndUpdate(
       { player: p._id, season, week },
       update,
       { new: true, upsert: true }
     );
-
     results.push(doc);
   }
-
   return results;
 }
 
 /**
- * Cards for OL line (basic).
+ * Retrieve offensive line cards from the database and format them for the frontend.
  */
 async function getOffensiveLineCardsFromDb(season, week, teamAbbrev) {
-  const team = teamAbbrev.toUpperCase();
-
-  const metrics = await LineMetrics.find({ Team: team, season, week }).populate(
-    "player"
-  );
-
-  return metrics.map((m) => ({
-    cardType: "oline-basic",
-    playerId: m.player?._id,
-    PlayerID: m.PlayerID,
-    name: m.player?.FullName,
-    team: m.Team,
-    position: m.Position,
-    season: m.season,
-    week: m.week,
-    photo: m.player?.PhotoUrl,
-    lineGrade: m.lineGrade,
-    snaps: m.snaps,
-  }));
+  const team = String(teamAbbrev || "").toUpperCase();
+  const metrics = await LineMetrics.find({ Team: team, season, week }).populate("player");
+  return metrics.map((m) => {
+    const p = m.player;
+    const name =
+      p?.full_name || `${p?.first_name ?? ""} ${p?.last_name ?? ""}`.trim();
+    const photo = p?.raw?.photoUrl || p?.raw?.headshot_url || null;
+    return {
+      cardType: "oline-basic",
+      playerId: p?._id,
+      PlayerID: m.PlayerID,
+      name,
+      team: m.Team,
+      position: m.Position,
+      season: m.season,
+      week: m.week,
+      photo,
+      lineGrade: m.lineGrade,
+      snaps: m.snaps,
+    };
+  });
 }
 
 module.exports = {

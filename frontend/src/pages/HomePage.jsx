@@ -3,9 +3,18 @@ import { useNavigate } from "react-router-dom";
 import KenneyPlaysBackground from "../ui/backgrounds/KenneyPlaysBackground";
 import LottiePlaysBackground from "../ui/backgrounds/LottiePlaysBackground";
 
+/**
+ * Home page with toggles between Kenney sprite field and a Lottie animation.
+ *
+ * This component showcases a hero section that can display animated Kenney
+ * football sprites or a looping American football Lottie animation.  A user
+ * can toggle between modes via the buttons in the interface.  By default,
+ * the mode is read from `VITE_HOME_BG_MODE` or falls back to "kenney".
+ */
 export default function HomePage() {
   const navigate = useNavigate();
 
+  // Determine starting mode from environment variables (kenney or lottie)
   const defaultMode = (import.meta.env.VITE_HOME_BG_MODE || "kenney").toLowerCase();
   const [mode, setMode] = useState(defaultMode);
 
@@ -16,7 +25,7 @@ export default function HomePage() {
   const [dots, setDots] = useState([]);
   const [teamColors, setTeamColors] = useState({ home: "blue", away: "red" });
 
-  // Predefined random plays
+  // Predefined random plays to animate the field
   const randomPlays = [
     {
       routes: [
@@ -50,31 +59,31 @@ export default function HomePage() {
     },
   ];
 
-  // Function to generate random colors
+  // Generate random team colors
   const generateRandomColors = () => {
     const randomColor = () => `#${Math.floor(Math.random() * 16777215).toString(16)}`;
     return { home: randomColor(), away: randomColor() };
   };
 
-  // Function to trigger random play
+  // Trigger a random play every five seconds
   const triggerRandomPlay = () => {
     const randomPlay = randomPlays[Math.floor(Math.random() * randomPlays.length)];
     setRoutes(randomPlay.routes);
     setDots(randomPlay.dots);
     setFootball(randomPlay.football);
     setPlayers(randomPlay.players);
-    setTeamColors(generateRandomColors()); // Assign random team colors
+    setTeamColors(generateRandomColors());
   };
 
-  // Trigger random play every 5 seconds
+  // Setup interval for random play animation
   useEffect(() => {
     const interval = setInterval(() => {
       triggerRandomPlay();
     }, 5000);
-
-    return () => clearInterval(interval); // Cleanup interval on unmount
+    return () => clearInterval(interval);
   }, []);
 
+  // Memoize background component based on current mode and play state
   const bg = useMemo(() => {
     if (mode === "kenney") {
       return (
@@ -82,17 +91,27 @@ export default function HomePage() {
           players={players.map((player) => ({
             ...player,
             helmet: player.team === "home" ? "/kenney/helmet_home.svg" : "/kenney/helmet_away.svg",
-            color: teamColors[player.team], // Assign team colors to players
+            color: teamColors[player.team],
           }))}
           football={football}
           highlightYardLines={highlightYardLines}
           routes={routes}
           dots={dots}
-          penalty={false} // No penalty logic for homepage
+          penalty={false}
         />
       );
     }
-    if (mode === "lottie") return <LottiePlaysBackground />;
+    if (mode === "lottie") {
+      // Provide a default src so the Lottie animation loads without prop overrides.
+      // Forward routes and dots so the play diagrams render on top of the animation.
+      return (
+        <LottiePlaysBackground
+          src="/lottie/football.json"
+          routes={routes}
+          dots={dots}
+        />
+      );
+    }
     return null;
   }, [mode, players, football, highlightYardLines, routes, dots, teamColors]);
 

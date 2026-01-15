@@ -1,4 +1,3 @@
-// server/routes/cards.js
 const express = require("express");
 const router = express.Router();
 
@@ -19,64 +18,52 @@ const {
   getSkillCardsForTeamFromDb,
 } = require("../services/cardAggregationService");
 const PlayerAdvancedMetrics = require("../models/PlayerAdvancedMetrics");
-const Player = require("../models/Player");
 
-/**
- * GET /api/cards/player/:playerId?season=&week=
- * Return a single skill card for a player.
- */
+// GET /api/cards/player/:playerId?season=&week=
+// Return a single skill card for a player.
 router.get("/player/:playerId", async (req, res, next) => {
   try {
-    const playerId = req.params.playerId;
-    const season = parseInt(req.query.season, 10);
-    const week = parseInt(req.query.week, 10);
-
-    const adv = await PlayerAdvancedMetrics.findOne({
-      PlayerID: Number(playerId),
-      season,
-      week,
-    }).populate("player");
-
-    if (!adv) {
-      return res.status(404).json({ error: "Card not found for player" });
-    }
-
+    const playerId = Number(req.params.playerId);
+    const season = Number(req.query.season);
+    const week = Number(req.query.week);
+    const adv = await PlayerAdvancedMetrics.findOne({ PlayerID: playerId, season, week }).populate(
+      "player"
+    );
+    if (!adv) return res.status(404).json({ error: "Card not found for player" });
+    const p = adv.player;
+    const name =
+      p?.full_name || `${p?.first_name ?? ""} ${p?.last_name ?? ""}`.trim();
+    const photo = p?.raw?.photoUrl || p?.raw?.headshot_url || null;
     const card = {
       cardType: "skill",
-      playerId: adv.player?._id,
+      playerId: p?._id,
       PlayerID: adv.PlayerID,
-      name: adv.player?.FullName,
+      name,
       team: adv.Team,
       position: adv.Position,
       season: adv.season,
       week: adv.week,
-      photo: adv.player?.PhotoUrl,
+      photo,
       metrics: adv.metrics,
     };
-
     res.json(card);
   } catch (err) {
     next(err);
   }
 });
 
-/**
- * GET /api/cards/team/:team?season=&week=
- * High-level payload with every card type for that team/week.
- */
+// GET /api/cards/team/:team?season=&week=
+// High-level payload with every card type for that team/week.
 router.get("/team/:team", async (req, res, next) => {
   try {
     const { team } = req.params;
-    const season = parseInt(req.query.season, 10);
-    const week = parseInt(req.query.week, 10);
-
+    const season = Number(req.query.season);
+    const week = Number(req.query.week);
     if (!week && week !== 0) {
       return res.status(400).json({
-        error:
-          "Missing ?week=. Example: /api/cards/team/BUF?season=2024&week=3",
+        error: "Missing ?week=. Example: /api/cards/team/BUF?season=2024&week=3",
       });
     }
-
     const payload = await getAllCardsForTeam(season, week, team);
     res.json(payload);
   } catch (err) {
@@ -84,14 +71,12 @@ router.get("/team/:team", async (req, res, next) => {
   }
 });
 
-/**
- * GET /api/cards/oline/:team?season=&week=
- */
+// GET /api/cards/oline/:team?season=&week=
 router.get("/oline/:team", async (req, res, next) => {
   try {
     const { team } = req.params;
-    const season = parseInt(req.query.season, 10);
-    const week = parseInt(req.query.week, 10);
+    const season = Number(req.query.season);
+    const week = Number(req.query.week);
     const cards = await getOffensiveLineCardsFromDb(season, week, team);
     res.json(cards);
   } catch (err) {
@@ -99,14 +84,12 @@ router.get("/oline/:team", async (req, res, next) => {
   }
 });
 
-/**
- * GET /api/cards/advanced-oline/:team?season=&week=
- */
+// GET /api/cards/advanced-oline/:team?season=&week=
 router.get("/advanced-oline/:team", async (req, res, next) => {
   try {
     const { team } = req.params;
-    const season = parseInt(req.query.season, 10);
-    const week = parseInt(req.query.week, 10);
+    const season = Number(req.query.season);
+    const week = Number(req.query.week);
     const cards = await getAdvancedOlineCardsFromDb(season, week, team);
     res.json(cards);
   } catch (err) {
@@ -114,14 +97,12 @@ router.get("/advanced-oline/:team", async (req, res, next) => {
   }
 });
 
-/**
- * GET /api/cards/special-teams/:team?season=&week=
- */
+// GET /api/cards/special-teams/:team?season=&week=
 router.get("/special-teams/:team", async (req, res, next) => {
   try {
     const { team } = req.params;
-    const season = parseInt(req.query.season, 10);
-    const week = parseInt(req.query.week, 10);
+    const season = Number(req.query.season);
+    const week = Number(req.query.week);
     const cards = await getSpecialTeamsCardsFromDb(season, week, team);
     res.json(cards);
   } catch (err) {
@@ -129,14 +110,12 @@ router.get("/special-teams/:team", async (req, res, next) => {
   }
 });
 
-/**
- * GET /api/cards/defense/:team?season=&week=
- */
+// GET /api/cards/defense/:team?season=&week=
 router.get("/defense/:team", async (req, res, next) => {
   try {
     const { team } = req.params;
-    const season = parseInt(req.query.season, 10);
-    const week = parseInt(req.query.week, 10);
+    const season = Number(req.query.season);
+    const week = Number(req.query.week);
     const cards = await getDefensiveCardsFromDb(season, week, team);
     res.json(cards);
   } catch (err) {
