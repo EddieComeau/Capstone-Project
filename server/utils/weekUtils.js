@@ -18,6 +18,13 @@ function getCurrentSeasonAndWeek() {
   return { season, week };
 }
 
+function isDuringSeason(date = new Date()) {
+  const month = date.getUTCMonth(); // 0-11
+  // Rough NFL season window: Sep (8) through Feb (1) inclusive.
+  return month >= 8 || month <= 1;
+}
+
 module.exports = {
   getCurrentSeasonAndWeek,
+  isDuringSeason,
 };

@@ -32,6 +32,7 @@ export default function AdminSyncPanel() {
       <h3>Admin Sync Panel</h3>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         <input
+          name="admin-sync-season"
           value={season}
           onChange={(e) => setSeason(e.target.value)}
           placeholder="Season (e.g. 2025)"
@@ -40,6 +41,7 @@ export default function AdminSyncPanel() {
           seasonStart={`${season}-09-05`}
           value={week}
           onChange={setWeek}
+          name="admin-sync-week"
         />
         <button onClick={handleSync}>🔄 Sync Betting Data</button>
       </div>

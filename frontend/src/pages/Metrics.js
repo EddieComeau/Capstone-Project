@@ -23,12 +23,12 @@ export default function Metrics() {
       <h2>Metrics Explorer</h2>
       <div className="card">
         <div style={{display:'flex', gap:8, alignItems:'center'}}>
-          <select value={entityType} onChange={e => setEntityType(e.target.value)}>
+          <select name="metrics-entity-type" value={entityType} onChange={e => setEntityType(e.target.value)}>
             <option value="team">Team</option>
             <option value="player">Player</option>
           </select>
-          <input placeholder="entityId" value={entityId} onChange={e => setEntityId(e.target.value)} />
-          <input placeholder="season (optional)" value={season} onChange={e => setSeason(e.target.value)} />
+          <input name="metrics-entity-id" placeholder="entityId" value={entityId} onChange={e => setEntityId(e.target.value)} />
+          <input name="metrics-season" placeholder="season (optional)" value={season} onChange={e => setSeason(e.target.value)} />
           <button onClick={load}>Load</button>
         </div>
         <div style={{marginTop:12}}>

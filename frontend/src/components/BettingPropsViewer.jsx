@@ -21,6 +21,7 @@ function BettingPropsViewer() {
     <div className="p-4">
       <h2 className="text-xl font-bold mb-4">🎯 Betting Props Viewer</h2>
       <input
+        name="betting-props-player-id"
         placeholder="Enter Player ID"
         className="border p-2 rounded mr-2"
         value={playerId}

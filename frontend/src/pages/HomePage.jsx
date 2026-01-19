@@ -1,7 +1,6 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React from "react";
 import { useNavigate } from "react-router-dom";
-import KenneyPlaysBackground from "../ui/backgrounds/KenneyPlaysBackground";
-import LottiePlaysBackground from "../ui/backgrounds/LottiePlaysBackground";
+import "./HomePage.css";
 
 /**
  * Home page with toggles between Kenney sprite field and a Lottie animation.
@@ -14,122 +13,15 @@ import LottiePlaysBackground from "../ui/backgrounds/LottiePlaysBackground";
 export default function HomePage() {
   const navigate = useNavigate();
 
-  // Determine starting mode from environment variables (kenney or lottie)
-  const defaultMode = (import.meta.env.VITE_HOME_BG_MODE || "kenney").toLowerCase();
-  const [mode, setMode] = useState(defaultMode);
-
-  const [players, setPlayers] = useState([]);
-  const [football, setFootball] = useState({ cx: 50, cy: 25 });
-  const [highlightYardLines, setHighlightYardLines] = useState([20, 50, 80]);
-  const [routes, setRoutes] = useState([]);
-  const [dots, setDots] = useState([]);
-  const [teamColors, setTeamColors] = useState({ home: "blue", away: "red" });
-
-  // Predefined random plays to animate the field
-  const randomPlays = [
-    {
-      routes: [
-        "M20,25 C30,20 40,30 50,25",
-        "M30,25 C40,30 50,20 60,25",
-      ],
-      dots: [
-        { cx: 20, cy: 25 },
-        { cx: 30, cy: 25 },
-      ],
-      football: { cx: 45, cy: 25 },
-      players: [
-        { cx: 20, cy: 25, team: "home" },
-        { cx: 30, cy: 25, team: "away" },
-      ],
-    },
-    {
-      routes: [
-        "M40,25 C50,20 60,30 70,25",
-        "M50,25 C60,30 70,20 80,25",
-      ],
-      dots: [
-        { cx: 40, cy: 25 },
-        { cx: 50, cy: 25 },
-      ],
-      football: { cx: 65, cy: 25 },
-      players: [
-        { cx: 40, cy: 25, team: "home" },
-        { cx: 50, cy: 25, team: "away" },
-      ],
-    },
-  ];
-
-  // Generate random team colors
-  const generateRandomColors = () => {
-    const randomColor = () => `#${Math.floor(Math.random() * 16777215).toString(16)}`;
-    return { home: randomColor(), away: randomColor() };
-  };
-
-  // Trigger a random play every five seconds
-  const triggerRandomPlay = () => {
-    const randomPlay = randomPlays[Math.floor(Math.random() * randomPlays.length)];
-    setRoutes(randomPlay.routes);
-    setDots(randomPlay.dots);
-    setFootball(randomPlay.football);
-    setPlayers(randomPlay.players);
-    setTeamColors(generateRandomColors());
-  };
-
-  // Setup interval for random play animation
-  useEffect(() => {
-    const interval = setInterval(() => {
-      triggerRandomPlay();
-    }, 5000);
-    return () => clearInterval(interval);
-  }, []);
-
-  // Memoize background component based on current mode and play state
-  const bg = useMemo(() => {
-    if (mode === "kenney") {
-      return (
-        <KenneyPlaysBackground
-          players={players.map((player) => ({
-            ...player,
-            helmet: player.team === "home" ? "/kenney/helmet_home.svg" : "/kenney/helmet_away.svg",
-            color: teamColors[player.team],
-          }))}
-          football={football}
-          highlightYardLines={highlightYardLines}
-          routes={routes}
-          dots={dots}
-          penalty={false}
-        />
-      );
-    }
-    if (mode === "lottie") {
-      // Provide a default src so the Lottie animation loads without prop overrides.
-      // Forward routes and dots so the play diagrams render on top of the animation.
-      return (
-        <LottiePlaysBackground
-          src="/lottie/football.json"
-          routes={routes}
-          dots={dots}
-        />
-      );
-    }
-    return null;
-  }, [mode, players, football, highlightYardLines, routes, dots, teamColors]);
-
   return (
     <section className="homeWrap">
-      <div className="homeBg" aria-hidden="true">
-        {bg}
-        <div className="bgOverlay" />
-        <div className="bgGrid" />
-      </div>
-
+      <div className="homeBackdrop" aria-hidden="true" />
       <div className="homeContent">
         <div className="homeHero">
           <div className="pill">HOME</div>
           <h1 className="homeTitle">Sideline Studio</h1>
           <p className="homeText">
-            Pro football companion with animated Kenney sprites, American-football Lottie loops, and quick jumps to
-            depth charts, play-by-play, and matchup tools.
+            Pro football companion with fast navigation, player stats, comparisons, and weekly insights.
           </p>
 
           <div className="homeCtas">
@@ -144,21 +36,24 @@ export default function HomePage() {
             </button>
           </div>
 
-          <div className="modeRow">
-            <span className="modeLabel">Background:</span>
-            <button
-              className={`modeBtn ${mode === "kenney" ? "active" : ""}`}
-              onClick={() => setMode("kenney")}
-              type="button"
-            >
-              Kenney
+          <div className="homeCtas">
+            <button className="ghostBtn" onClick={() => navigate("/start")} type="button">
+              Start Screen
             </button>
-            <button
-              className={`modeBtn ${mode === "lottie" ? "active" : ""}`}
-              onClick={() => setMode("lottie")}
-              type="button"
-            >
-              Lottie
+            <button className="ghostBtn" onClick={() => navigate("/home")} type="button">
+              Home
+            </button>
+            <button className="ghostBtn" onClick={() => navigate("/matchups")} type="button">
+              Matchups
+            </button>
+            <button className="ghostBtn" onClick={() => navigate("/standings")} type="button">
+              Standings
+            </button>
+            <button className="ghostBtn" onClick={() => navigate("/cards")} type="button">
+              Cards
+            </button>
+            <button className="ghostBtn" onClick={() => navigate("/play-by-play")} type="button">
+              Play By Play
             </button>
           </div>
         </div>

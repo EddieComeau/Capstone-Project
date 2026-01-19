@@ -50,18 +50,46 @@
     gap: 8px;
   }
   
-  .count {
-    background: #0b1c0b;
-    border: 2px solid #2c7a2c;
-    border-radius: 999px;
-    padding: 4px 10px;
-    font-weight: 900;
-  }
-  
-  .injuryList {
-    display: grid;
-    gap: 8px;
-  }
+.count {
+  background: #0b1c0b;
+  border: 2px solid #2c7a2c;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-weight: 900;
+}
+
+.injuryFilters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+  margin: 12px 0 16px;
+}
+
+.injuryFilters label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-weight: 700;
+}
+
+.injuryFilters select {
+  background: #0b1c0b;
+  color: #e7f7e7;
+  border: 2px solid #1b3d1c;
+  border-radius: 12px;
+  padding: 8px 10px;
+}
+
+.injuryWeekNote {
+  align-self: end;
+  font-size: 12px;
+  opacity: 0.75;
+}
+
+.injuryList {
+  display: grid;
+  gap: 8px;
+}
   
   .injuryCard {
     display: grid;

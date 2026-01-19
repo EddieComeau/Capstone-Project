@@ -54,12 +54,18 @@
     color: #9ca3af;
   }
   
-  .team-stats-strip {
-    display: flex;
-    gap: 0.6rem;
-    margin-bottom: 1rem;
-  }
-  
+.team-stats-strip {
+  display: flex;
+  gap: 0.6rem;
+  margin-bottom: 1rem;
+}
+
+.team-rating-strip {
+  display: flex;
+  gap: 0.6rem;
+  margin-bottom: 1rem;
+}
+
   .team-stat {
     flex: 1;
     padding: 0.45rem 0.55rem;

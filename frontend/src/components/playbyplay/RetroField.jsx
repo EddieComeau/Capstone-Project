@@ -14,11 +14,12 @@ export default function RetroField({
   ballSpot = 50,
   currentDown = 1,
   hasPenalty = false,
+  showDown = true,
 }) {
   const homeTheme = getTheme(homeAbbr);
   const awayTheme = getTheme(awayAbbr);
 
-  const vizPlays = useMemo(() => plays.slice(-40), [plays]);
+  const vizPlays = useMemo(() => plays.slice(-24), [plays]);
 
   const ballLeft = useMemo(() => {
     const pct = clamp(Number(ballSpot ?? 50), 0, 100);
@@ -35,6 +36,33 @@ export default function RetroField({
     ],
     []
   );
+
+  const driveMarkers = useMemo(() => {
+    const driveCount = {};
+    let lastTeam = null;
+    return vizPlays.map((p) => {
+      const teamAbbr = p?.team?.abbreviation || "";
+      if (!teamAbbr) return { driveStart: false, driveNumber: null, teamAbbr };
+      if (teamAbbr !== lastTeam) {
+        driveCount[teamAbbr] = (driveCount[teamAbbr] || 0) + 1;
+        lastTeam = teamAbbr;
+        return { driveStart: true, driveNumber: driveCount[teamAbbr], teamAbbr };
+      }
+      return { driveStart: false, driveNumber: driveCount[teamAbbr] || 1, teamAbbr };
+    });
+  }, [vizPlays]);
+
+  const laneAssignments = useMemo(() => {
+    const lanes = { home: 0, away: 0 };
+    return vizPlays.map((p) => {
+      const teamAbbr = p?.team?.abbreviation || "";
+      const isHome = teamAbbr && teamAbbr === homeAbbr;
+      const key = isHome ? "home" : "away";
+      const lane = lanes[key] % 3;
+      lanes[key] += 1;
+      return { lane, isHome };
+    });
+  }, [vizPlays, homeAbbr]);
 
   return (
     <div
@@ -58,20 +86,28 @@ export default function RetroField({
 
       <div className="ballMarker" style={{ left: `${ballLeft}%` }}>
         <div className="ballShape" />
+        <div className="ballLabel">BALL</div>
       </div>
 
-      <div className="downMarker" style={{ left: `${ballLeft}%` }}>
-        <div className="markerPole" />
-        <div className="markerFlag">{downNumber}</div>
-      </div>
+      {showDown ? (
+        <>
+          <div className="downMarker" style={{ left: `${ballLeft}%` }}>
+            <div className="markerPole" />
+            <div className="markerFlag">BALL</div>
+          </div>
 
-      <div className="digitalDownBox">
-        <div className="digitalDownFace">
-          <div className="digitalLabel">DOWN</div>
-          <div className="digitalDigit">{downNumber}</div>
-        </div>
-        <div className="digitalStick" />
-      </div>
+          <div className="digitalDownBox">
+            <div className="digitalDownFace">
+              <div className="digitalLabel">DOWN</div>
+              <div className="digitalDigit">{downNumber}</div>
+            </div>
+            <div className="digitalStick" />
+          </div>
+        </>
+      ) : null}
+
+      <div className="driveLegend top">Away drives</div>
+      <div className="driveLegend bottom">Home drives</div>
 
       {refs.map((r, idx) => (
         <div
@@ -92,15 +128,12 @@ export default function RetroField({
         const leftPct = (Math.min(start, end) / 100) * 100;
         const widthPct = (Math.max(1, Math.abs(end - start)) / 100) * 100;
 
-        const lane = idx % 6;
-        const topPx = 26 + lane * 22;
+        const laneMeta = laneAssignments[idx] || { lane: 0, isHome: false };
+        const topPx = laneMeta.isHome ? 104 + laneMeta.lane * 20 : 22 + laneMeta.lane * 20;
 
         const teamAbbr = p?.team?.abbreviation;
         const theme = getTheme(teamAbbr);
-
-        // Lightweight “1st down” indicator heuristic
-        const isFirstDown =
-          p.start_down === 1 && idx > 0 && vizPlays[idx - 1]?.end_down === 1;
+        const driveMeta = driveMarkers[idx] || {};
 
         return (
           <div
@@ -115,7 +148,9 @@ export default function RetroField({
             title={p.short_text || p.text || ""}
           >
             <div className="playDot" />
-            {isFirstDown ? <div className="firstDownFlag">1st</div> : null}
+            {driveMeta.driveStart ? (
+              <div className="driveFlag">D{driveMeta.driveNumber}</div>
+            ) : null}
           </div>
         );
       })}

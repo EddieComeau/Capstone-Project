@@ -3,6 +3,50 @@ const router = express.Router();
 // When copied into your `server/routes` directory, this path resolves correctly.
 const Player = require("../models/Player");
 
+function escapeRegExp(input) {
+  return String(input).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// GET /api/players/search?q=...
+// Autocomplete player search.  Returns both modern and legacy fields for compatibility with the frontend.
+router.get("/search", async (req, res) => {
+  const q = String(req.query.q || "").trim();
+  if (q.length < 2) return res.json({ ok: true, results: [] });
+
+  try {
+    const regex = new RegExp(escapeRegExp(q), "i");
+    const players = await Player.find({
+      $or: [
+        { full_name: regex },
+        { first_name: regex },
+        { last_name: regex },
+      ],
+    })
+      .limit(15)
+      .lean();
+
+    const results = players.map((p) => {
+      const id = p.PlayerID || p.bdlId || p._id?.toString();
+      return {
+        id,
+        player_id: id, // legacy alias
+        PlayerID: id,
+        first_name: p.first_name,
+        last_name: p.last_name,
+        full_name: p.full_name,
+        position: p.position,
+        team_abbr: p.team?.abbreviation || null,
+        team: p.team?.abbreviation || null,
+        jersey_number: p.raw?.jersey_number || null,
+      };
+    });
+    res.json({ ok: true, results });
+  } catch (e) {
+    console.error("Player search error:", e.message);
+    res.status(500).json({ ok: false, error: "Search failed" });
+  }
+});
+
 // GET /api/players/:id
 // Return a single player record.  Accepts either the legacy PlayerID or the BDL ID.
 router.get("/:id", async (req, res) => {
@@ -41,46 +85,6 @@ router.get("/:id", async (req, res) => {
   } catch (e) {
     console.error("player lookup error:", e.message);
     res.status(500).json({ ok: false, error: "Failed to lookup player" });
-  }
-});
-
-// GET /api/players/search?q=...
-// Autocomplete player search.  Returns both modern and legacy fields for compatibility with the frontend.
-router.get("/search", async (req, res) => {
-  const q = String(req.query.q || "").trim();
-  if (q.length < 2) return res.json({ ok: true, results: [] });
-
-  try {
-    const regex = new RegExp(q, "i");
-    const players = await Player.find({
-      $or: [
-        { full_name: regex },
-        { first_name: regex },
-        { last_name: regex },
-      ],
-    })
-      .limit(15)
-      .lean();
-
-    const results = players.map((p) => {
-      const id = p.PlayerID || p.bdlId || p._id?.toString();
-      return {
-        id,
-        player_id: id, // legacy alias
-        PlayerID: id,
-        first_name: p.first_name,
-        last_name: p.last_name,
-        full_name: p.full_name,
-        position: p.position,
-        team_abbr: p.team?.abbreviation || null,
-        team: p.team?.abbreviation || null,
-        jersey_number: p.raw?.jersey_number || null,
-      };
-    });
-    res.json({ ok: true, results });
-  } catch (e) {
-    console.error("Player search error:", e.message);
-    res.status(500).json({ ok: false, error: "Search failed" });
   }
 });
 

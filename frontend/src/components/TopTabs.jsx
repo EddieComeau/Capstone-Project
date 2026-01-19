@@ -38,12 +38,6 @@ export default function TopTabs() {
         <NavLink to="/standings" className={linkClass}>
           Standings
         </NavLink>
-        <NavLink to="/betting" className={linkClass}>
-          Betting
-        </NavLink>
-        <NavLink to="/injuries" className={linkClass}>
-          Injuries
-        </NavLink>
         <NavLink to="/cards" className={linkClass}>
           Cards
         </NavLink>

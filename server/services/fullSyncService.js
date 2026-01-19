@@ -23,7 +23,7 @@ const Game = require('../models/Game');
 // Maximum number of items to include in a single API call.  BDL caps
 // per_page at 100 for most endpoints.  Adjust via environment if
 // needed.
-const PER_PAGE = Number(process.env.SYNC_BULK_BATCH_SIZE || 100);
+const PER_PAGE = Math.min(Math.max(Number(process.env.SYNC_BULK_BATCH_SIZE || 100), 1), 100);
 
 /**
  * Retrieve all NFL team IDs from BallDon'tLie.  Uses cursor
@@ -457,8 +457,8 @@ async function fullSync({ seasons }) {
   console.log('🚀 Starting full data sync for seasons:', seasons.join(', '));
   // Step 1: core entities (players, games, per‑game stats)
   await syncPlayers({ per_page: PER_PAGE });
-  await syncGames({ per_page: PER_PAGE });
-  await syncStats({ per_page: PER_PAGE });
+  await syncGames({ per_page: PER_PAGE, seasons });
+  await syncStats({ per_page: PER_PAGE, seasons });
   // Step 2: season aggregates
   await syncSeasonStats({ seasons });
   await syncTeamSeasonStats({ seasons });

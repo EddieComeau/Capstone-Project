@@ -1,6 +1,8 @@
 const express = require('express');
 const syncService = require('../services/syncService');
 const desiredService = require('../services/desiredService');
+const fullSyncService = require('../services/fullSyncService');
+const Game = require('../models/Game');
 
 /*
  * This router exposes manual sync endpoints.  It replaces the old
@@ -10,6 +12,7 @@ const desiredService = require('../services/desiredService');
  * Routes:
  *  POST /players  → sync players
  *  POST /games    → sync games (optionally filtered by season)
+ *  POST /full     → full sync (players, games, stats, season aggregates, plays)
  *  POST /derived  → recompute derived metrics (advanced stats, standings, matchups)
  */
 const router = express.Router();
@@ -73,16 +76,33 @@ router.post('/stats', async (req, res, next) => {
   }
 });
 
+// POST /api/sync/full
+// Runs a full sync for the supplied seasons array.
+router.post('/full', async (req, res, next) => {
+  try {
+    const { seasons } = req.body || {};
+    await fullSyncService.fullSync({ seasons });
+    res.json({ ok: true, message: 'Full sync complete' });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // POST /api/sync/derived
 router.post('/derived', async (req, res, next) => {
   try {
-    // Optionally accept a seasons array in the body
-    const { seasons } = req.body || {};
+    // Optionally accept a seasons array in the body; default to the latest two seasons.
+    let { seasons } = req.body || {};
+    if (!Array.isArray(seasons) || seasons.length === 0) {
+      const distinct = await Game.distinct('season');
+      const sorted = distinct.filter(Boolean).sort((a, b) => b - a);
+      seasons = sorted.slice(0, 2);
+    }
     // First compute advanced metrics (sums/averages) from your Stats collection
     await desiredService.computeAdvancedStats();
     // Then recompute standings and matchups
-    await desiredService.computeStandings();
-    await desiredService.computeMatchups();
+    await desiredService.computeStandings({ seasons });
+    await desiredService.computeMatchups({ seasons });
     res.json({ ok: true, message: 'Derived metrics computed' });
   } catch (err) {
     next(err);

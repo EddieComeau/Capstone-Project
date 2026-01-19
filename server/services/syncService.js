@@ -85,6 +85,7 @@ async function syncInjuries(options = {}) {
   const perPage = parseInt(process.env.SYNC_INJURIES_PER_PAGE || 100, 10);
   let cursor = options.cursor || null;
   let totalSynced = 0;
+  const activeIds = new Set();
   while (true) {
     // Fetch current injuries; the endpoint does not accept season/week filters.
     const injuries = await sportsdata.getPlayerInjuries({
@@ -104,6 +105,7 @@ async function syncInjuries(options = {}) {
         continue;
       }
       const bdlId = injury.player.id;
+      activeIds.add(bdlId);
       const update = {
         player: injury.player,
         status: injury.status || null,
@@ -126,6 +128,19 @@ async function syncInjuries(options = {}) {
     }
     cursor = meta.next_cursor || meta.nextCursor || null;
     if (!cursor) break;
+  }
+  const hasFilters = options.team_ids || options.player_ids;
+  if (!hasFilters && activeIds.size > 0) {
+    await Injury.updateMany(
+      { bdlId: { $nin: Array.from(activeIds) }, status: { $ne: "Recovered" } },
+      {
+        $set: {
+          status: "Recovered",
+          comment: "Recovered",
+          updatedAt: new Date(),
+        },
+      }
+    );
   }
   return totalSynced;
 }
@@ -189,7 +204,7 @@ async function syncAdvancedReceiving(season) {
  * @returns {Promise<{upsertCount:number, fetched:number, pages:number, next_cursor:string|null}>}
  */
 async function syncTeams(options = {}) {
-  const per_page = Number(options.per_page || 100);
+  const per_page = Math.min(Math.max(Number(options.per_page || 100), 1), 100);
   let cursor = options.cursor || null;
   let fetched = 0;
   let upsertCount = 0;
@@ -275,7 +290,7 @@ async function syncTeams(options = {}) {
  * @returns {Promise<{upsertCount:number, fetched:number, pages:number, next_cursor:string|null}>}
  */
 async function syncPlayers(options = {}) {
-  const per_page = Number(options.per_page || 100);
+  const per_page = Math.min(Math.max(Number(options.per_page || 100), 1), 100);
   let cursor = options.cursor || null;
   let fetched = 0;
   let upsertCount = 0;
@@ -447,7 +462,7 @@ async function syncTeamPlayers(teamAbbrev) {
  * @returns {Promise<{upsertCount:number,fetched:number,pages:number,next_cursor:string|null}>}
  */
 async function syncGames(options = {}) {
-  const per_page = Number(options.per_page || 100);
+  const per_page = Math.min(Math.max(Number(options.per_page || 100), 1), 100);
   let cursor = options.cursor || null;
   let fetched = 0;
   let upsertCount = 0;
@@ -558,6 +573,23 @@ async function syncStats(options = {}) {
   while (pageCount < maxPages) {
     pageCount++;
     const params = { per_page };
+    if (options.seasons) {
+      params.seasons = Array.isArray(options.seasons)
+        ? options.seasons
+        : [options.seasons];
+    } else if (options.season) {
+      params.seasons = [options.season];
+    }
+    if (options.weeks) {
+      params.weeks = Array.isArray(options.weeks)
+        ? options.weeks
+        : [options.weeks];
+    } else if (options.week) {
+      params.weeks = [options.week];
+    }
+    if (typeof options.postseason === 'boolean') {
+      params.postseason = options.postseason;
+    }
     if (cursor) params.cursor = cursor;
     const response = await bdlList('/stats', params);
     const stats = response && response.data ? response.data : [];

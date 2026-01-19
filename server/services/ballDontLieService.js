@@ -59,6 +59,41 @@ async function getPlayerInjuries({ season, week, per_page = 100, cursor = null }
   }
 }
 
+async function listTeams(params = {}) {
+  const res = await bdlClient.get("/teams", { params });
+  return res.data;
+}
+
+async function listTeamSeasonStats(params = {}) {
+  const res = await bdlClient.get("/team_season_stats", { params });
+  return res.data;
+}
+
+async function listTeamStats(params = {}) {
+  const res = await bdlClient.get("/team_stats", { params });
+  return res.data;
+}
+
+async function listSeasonStats(params = {}) {
+  const res = await bdlClient.get("/season_stats", { params });
+  return res.data;
+}
+
+async function listPlays(params = {}) {
+  const res = await bdlClient.get("/plays", { params });
+  return res.data;
+}
+
+async function listOddsPlayerProps(params = {}) {
+  const res = await bdlClient.get("/odds/player_props", { params });
+  return res.data;
+}
+
+async function listStandings(params = {}) {
+  const res = await bdlClient.get("/standings", { params });
+  return res.data;
+}
+
 // ✅ Advanced stats for syncProblemData.js
 async function listAdvancedRushing(params) {
   const res = await bdlClient.get("/advanced_stats/rushing", { params });
@@ -79,6 +114,13 @@ module.exports = {
   getOddsForGame,
   getPropsForGame,
   getPlayerInjuries,
+  listTeams,
+  listTeamSeasonStats,
+  listTeamStats,
+  listSeasonStats,
+  listPlays,
+  listOddsPlayerProps,
+  listStandings,
   listAdvancedRushing,
   listAdvancedPassing,
   listAdvancedReceiving,

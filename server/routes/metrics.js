@@ -6,6 +6,7 @@ const router = express.Router();
 const Game = require("../models/Game");
 const Stat = require("../models/Stat");
 const PlayerAdvancedMetrics = require("../models/PlayerAdvancedMetrics");
+const Team = require("../models/Team");
 
 // GET /api/metrics/:entityType/:entityId?season=YYYY
 // Supported entity types:
@@ -22,6 +23,10 @@ router.get("/:entityType/:entityId", async (req, res) => {
   try {
     if (entityType === "team") {
       const teamAbbr = String(entityId).toUpperCase();
+      const team = await Team.findOne({ abbreviation: teamAbbr }).lean();
+      if (!team) {
+        return res.status(404).json({ ok: false, error: "Team not found" });
+      }
       // Fetch all games for this team in the specified season
       const games = await Game.find({
         season,
@@ -32,7 +37,10 @@ router.get("/:entityType/:entityId", async (req, res) => {
       });
       const gameIds = games.map((g) => g.gameId);
       // Fetch stats rows for this team across those games
-      const statsRows = await Stat.find({ gameId: { $in: gameIds }, teamId: teamAbbr });
+      const statsRows = await Stat.find({
+        gameId: { $in: gameIds },
+        teamId: team.ballDontLieTeamId,
+      });
       let passYards = 0;
       let rushYards = 0;
       let points = 0;

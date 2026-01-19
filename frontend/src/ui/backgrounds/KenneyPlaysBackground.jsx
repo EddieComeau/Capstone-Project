@@ -1,4 +1,5 @@
 import PlayRoutesOverlay from "../overlays/PlayRoutesOverlay";
+import "./KenneyPlaysBackground.css";
 
 /**
  * Kenney sprite-based background for play diagrams.  This component draws

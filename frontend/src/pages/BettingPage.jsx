@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import PlayerSearchInput from "../components/PlayerSearchInput";
 import WeekPicker from "../components/WeekPicker";
+import { getDefaultSeason } from "../utils/season";
 
 /**
  * BettingPage
@@ -21,8 +22,12 @@ export default function BettingPage() {
   const [props, setProps] = useState([]);
   const [playerNameMap, setPlayerNameMap] = useState({});
   const [loading, setLoading] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncAttempted, setSyncAttempted] = useState(false);
   const [syncedAt, setSyncedAt] = useState(null);
   const [selectedPlayer, setSelectedPlayer] = useState(null);
+  const [selectedStats, setSelectedStats] = useState(null);
+  const [statsSeason, setStatsSeason] = useState(getDefaultSeason());
 
   // List of games for the selected season/week
   const [games, setGames] = useState([]);
@@ -32,7 +37,7 @@ export default function BettingPage() {
   const [filters, setFilters] = useState({
     playerId: "",
     gameId: "",
-    season: new Date().getFullYear().toString(),
+    season: getDefaultSeason().toString(),
     week: "",
   });
 
@@ -63,8 +68,10 @@ export default function BettingPage() {
         propsRes.json(),
       ]);
 
-      setOdds(oddsJson.odds || []);
-      setProps(propsJson.props || []);
+      const nextOdds = oddsJson.odds || [];
+      const nextProps = propsJson.props || [];
+      setOdds(nextOdds);
+      setProps(nextProps);
 
       const timestamps = [...(propsJson.props || []), ...(oddsJson.odds || [])]
         .map((x) => x.synced_at)
@@ -74,7 +81,7 @@ export default function BettingPage() {
       if (timestamps.length) setSyncedAt(timestamps[0]);
 
       // Load player names
-      const ids = new Set(props.map((p) => p.player_id));
+      const ids = new Set(nextProps.map((p) => p.player_id));
       const entries = [...ids].map(async (id) => {
         const res = await fetch(`/api/players/${id}`);
         const json = await res.json();
@@ -83,6 +90,18 @@ export default function BettingPage() {
       });
       const results = await Promise.all(entries);
       setPlayerNameMap(Object.fromEntries(results));
+
+      if (
+        !syncAttempted &&
+        !loadingGames &&
+        (oddsJson.odds || []).length === 0 &&
+        (propsJson.props || []).length === 0 &&
+        (filters.week || filters.gameId)
+      ) {
+        setSyncAttempted(true);
+        await syncBettingData();
+        await fetchData();
+      }
     } catch (e) {
       console.error("Error loading betting data:", e);
     } finally {
@@ -90,10 +109,52 @@ export default function BettingPage() {
     }
   }
 
+  async function syncBettingData() {
+    try {
+      setSyncing(true);
+      const payload = {
+        season: Number(filters.season) || undefined,
+        week: filters.week ? Number(filters.week) : undefined,
+        gameIds: filters.gameId ? [Number(filters.gameId)] : undefined,
+      };
+      await fetch("/api/betting/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+    } catch (e) {
+      console.error("Failed to sync betting data", e);
+    } finally {
+      setSyncing(false);
+    }
+  }
+
   useEffect(() => {
     fetchData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    async function loadPlayerStats() {
+      const playerId = selectedPlayer?.player_id || filters.playerId;
+      if (!playerId) {
+        setSelectedStats(null);
+        return;
+      }
+      try {
+        const params = new URLSearchParams({
+          season: String(statsSeason),
+        });
+        const res = await fetch(`/api/stats/player/${playerId}?${params.toString()}`);
+        const json = await res.json();
+        setSelectedStats(json?.totals || null);
+      } catch (e) {
+        console.error("Failed to load player stats", e);
+        setSelectedStats(null);
+      }
+    }
+    loadPlayerStats();
+  }, [selectedPlayer, filters.playerId, statsSeason]);
 
   function updateFilter(field, value) {
     setFilters((prev) => ({ ...prev, [field]: value }));
@@ -147,8 +208,39 @@ export default function BettingPage() {
             updateFilter("playerId", player.player_id);
           }}
         />
+        {selectedPlayer ? (
+          <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+            <div>
+              <div style={{ fontWeight: 600 }}>
+                {selectedPlayer.full_name} ({selectedPlayer.team_abbr})
+              </div>
+              <div style={{ fontSize: 12, color: "#666" }}>
+                {selectedPlayer.position} • #{selectedPlayer.jersey_number || "—"}
+              </div>
+            </div>
+            <label style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
+              Season
+              <input
+                name="betting-player-season"
+                type="number"
+                value={statsSeason}
+                onChange={(e) => setStatsSeason(Number(e.target.value))}
+                style={{ width: 90 }}
+              />
+            </label>
+            {selectedStats ? (
+              <div style={{ display: "flex", gap: 10, fontSize: 12 }}>
+                <span>Pass Yds: {selectedStats.passing_yards ?? "—"}</span>
+                <span>Rush Yds: {selectedStats.rushing_yards ?? "—"}</span>
+                <span>Rec Yds: {selectedStats.receiving_yards ?? "—"}</span>
+                <span>TDs: {selectedStats.receiving_tds ?? selectedStats.rushing_tds ?? selectedStats.passing_tds ?? "—"}</span>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
         {/* Game selector: choose from games fetched for the selected season/week */}
         <select
+          name="betting-game"
           value={filters.gameId}
           onChange={(e) => updateFilter("gameId", e.target.value)}
           disabled={loadingGames || games.length === 0}
@@ -165,6 +257,7 @@ export default function BettingPage() {
           })}
         </select>
         <input
+          name="betting-season"
           placeholder="Season"
           value={filters.season}
           onChange={(e) => updateFilter("season", e.target.value)}
@@ -177,6 +270,9 @@ export default function BettingPage() {
         />
         <button onClick={fetchData} disabled={loading}>
           {loading ? "Loading..." : "🔁 Refresh"}
+        </button>
+        <button onClick={syncBettingData} disabled={syncing}>
+          {syncing ? "Syncing..." : "Sync Odds/Props"}
         </button>
       </div>
 

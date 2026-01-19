@@ -14,8 +14,8 @@ export default function StartPage() {
       <div className="startPanel">
         <RetroStartScreen onStart={() => navigate("/home")} />
         <p className="startCopy">
-          Old-school jumbotron vibes with a flashing marquee. Tap Start to jump into the animated Sideline Studio
-          homepage, then hop to depth charts or the retro play-by-play field.
+          Old-school jumbotron vibes with a flashing marquee. Tap Start to jump into Sideline Studio, then hop to depth
+          charts or the retro play-by-play field.
         </p>
         <div className="startActions">
           <button className="primaryBtn" type="button" onClick={() => navigate("/home")}>Start</button>

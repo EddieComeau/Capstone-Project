@@ -1,5 +1,6 @@
 import { useParams } from "react-router-dom";
 import { useEffect, useState } from "react";
+import { apiGet } from "../lib/api";
 
 export default function TeamPage() {
   const { abbr } = useParams();
@@ -8,8 +9,7 @@ export default function TeamPage() {
   useEffect(() => {
     async function load() {
       try {
-        const res = await fetch(`/api/roster/${abbr}`);
-        const json = await res.json();
+        const json = await apiGet(`/roster/${abbr}`);
         setRoster(json || []);
       } catch (e) {
         console.warn("Error loading team roster", e);

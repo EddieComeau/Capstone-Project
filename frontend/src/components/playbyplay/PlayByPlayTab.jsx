@@ -1,11 +1,11 @@
 // src/components/playbyplay/PlayByPlayTab.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { apiGet } from "../../lib/api";
-import { sampleGames, samplePlays } from "../../data/playSamples";
 import HelmetButton from "./HelmetButton";
 import RetroField from "./RetroField";
 import PlayEventFXLayer from "./eventFx/PlayEventFXLayer";
 import { usePlayEventFX } from "./eventFx/usePlayEventFx";
+import { getDefaultSeason } from "../../utils/season";
 import "./playbyplay.css";
 
 const SFX_MAP = {
@@ -43,8 +43,8 @@ const EVENT_MATCHERS = [
 ];
 
 export default function PlayByPlayTab() {
-  const [season, setSeason] = useState(new Date().getFullYear());
-  const [week, setWeek] = useState(1);
+  const [season, setSeason] = useState(getDefaultSeason());
+  const [week, setWeek] = useState("");
 
   const [games, setGames] = useState([]);
   const [gameId, setGameId] = useState(null);
@@ -54,6 +54,7 @@ export default function PlayByPlayTab() {
   const [cursor, setCursor] = useState(null);
   const [live, setLive] = useState(true);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
   const [bigPlayCursor, setBigPlayCursor] = useState(-1);
   const [bigPlayFilter, setBigPlayFilter] = useState("all");
   const [toastPlay, setToastPlay] = useState(null);
@@ -67,16 +68,22 @@ export default function PlayByPlayTab() {
     (async () => {
       try {
         setLoading(true);
-        const data = await apiGet("/games", { season, week, per_page: 100 });
+        setError(null);
+        const weekParam = week === "" ? null : Number(week);
+        const params = {
+          season,
+          per_page: 100,
+          ...(weekParam && weekParam > 0 ? { week: weekParam } : {}),
+        };
+        const data = await apiGet("/games", params);
         if (cancelled) return;
         setGames(data.data || []);
-        if ((data.data || []).length === 0) {
-          const fallback = sampleGames(season, week);
-          setGames(fallback);
-        }
       } catch (e) {
         console.error(e);
-        setGames(sampleGames(season, week));
+        if (!cancelled) {
+          setGames([]);
+          setError("Failed to load games from the database.");
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -124,8 +131,7 @@ export default function PlayByPlayTab() {
       setCursor(next == null ? undefined : next);
     } catch (e) {
       console.error(e);
-      const fallback = samplePlays(gameId);
-      setPlays(fallback);
+      setError("Failed to load plays from the database.");
       setCursor(undefined);
     }
   }
@@ -139,6 +145,7 @@ export default function PlayByPlayTab() {
         setLoading(true);
         setCursor(null);
         setPlays([]);
+        setError(null);
         if (!cancelled) await fetchNextPage();
       } catch (e) {
         console.error(e);
@@ -232,6 +239,12 @@ export default function PlayByPlayTab() {
     return text.includes("penalty");
   }, [focusPlay]);
 
+  const showDownMarker = useMemo(() => {
+    if (!selectedGame || !live) return false;
+    const status = String(selectedGame.status || "").toLowerCase();
+    return !status.includes("final") && !status.includes("completed");
+  }, [selectedGame, live]);
+
   function stepBigPlay(delta) {
     if (!filteredBigPlays.length) return;
     setBigPlayCursor((idx) => {
@@ -283,6 +296,7 @@ export default function PlayByPlayTab() {
             Season
             <input
               type="number"
+              name="playbyplay-season"
               value={season}
               onChange={(e) => setSeason(Number(e.target.value))}
             />
@@ -291,17 +305,27 @@ export default function PlayByPlayTab() {
           <label>
             Week
             <input
-              type="number"
-              min={1}
-              max={22}
+              type="text"
+              name="playbyplay-week"
+              inputMode="numeric"
+              pattern="[0-9]*"
               value={week}
-              onChange={(e) => setWeek(Number(e.target.value))}
+              onChange={(e) => {
+                const raw = e.target.value;
+                const cleaned = raw.replace(/[^\d]/g, "");
+                if (!cleaned || cleaned === "0") {
+                  setWeek("");
+                  return;
+                }
+                setWeek(cleaned);
+              }}
             />
           </label>
 
           <label className="toggle">
             <input
               type="checkbox"
+              name="playbyplay-live"
               checked={live}
               onChange={(e) => setLive(e.target.checked)}
             />
@@ -318,12 +342,14 @@ export default function PlayByPlayTab() {
           </button>
 
           {loading ? <span className="pbpLoading">Loading…</span> : null}
+          {error ? <span className="pbpLoading">{error}</span> : null}
         </div>
 
         <div className="pbpFxRow">
           <label className="toggle">
             <input
               type="checkbox"
+              name="playbyplay-fx"
               checked={fx.enabled}
               onChange={(e) => fx.setEnabled(e.target.checked)}
             />
@@ -364,6 +390,9 @@ export default function PlayByPlayTab() {
             </div>
           );
         })}
+        {!games.length && !loading ? (
+          <div className="pbpEmpty">No games found for that week/season.</div>
+        ) : null}
       </div>
 
       {selectedGame ? (
@@ -377,6 +406,7 @@ export default function PlayByPlayTab() {
             <div>
               <div className="label">Big play reel</div>
               <select
+                name="playbyplay-bigplay-filter"
                 value={bigPlayFilter}
                 onChange={(e) => setBigPlayFilter(e.target.value)}
               >
@@ -443,6 +473,7 @@ export default function PlayByPlayTab() {
               ballSpot={ballSpot}
               currentDown={currentDown}
               hasPenalty={hasPenalty}
+              showDown={showDownMarker}
             />
           </div>
 

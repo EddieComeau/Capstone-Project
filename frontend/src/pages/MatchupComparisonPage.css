@@ -80,12 +80,17 @@
     gap: 8px;
   }
   
-  .scorePill {
-    padding: 10px 12px;
-    border-radius: 12px;
-    border: 1px solid rgba(255, 255, 255, 0.16);
-    background: rgba(255, 255, 255, 0.04);
-  }
+.scorePill {
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.scorePill.highlight {
+  border-color: rgba(250, 204, 21, 0.6);
+  box-shadow: 0 0 12px rgba(250, 204, 21, 0.25);
+}
   
   .scoreLabel {
     display: block;
@@ -93,10 +98,46 @@
     color: rgba(255, 255, 255, 0.7);
   }
   
-  .scoreValue {
-    font-weight: 800;
-    font-size: 16px;
-  }
+.scoreValue {
+  font-weight: 800;
+  font-size: 16px;
+  line-height: 1.1;
+  display: block;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.scoreSub {
+  display: block;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.6);
+  margin-top: 2px;
+}
+
+.starterRanks {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  display: grid;
+  gap: 6px;
+}
+
+.starterTitle {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+  color: rgba(255, 255, 255, 0.7);
+  text-transform: uppercase;
+}
+
+.starterRow {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.88);
+}
   
   .versus {
     font-size: 32px;

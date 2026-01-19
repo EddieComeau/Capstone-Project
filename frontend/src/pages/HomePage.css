@@ -12,33 +12,15 @@
   overflow: hidden;
 }
 
-.homeBg {
+.homeBackdrop {
   position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
+  inset: 0;
   z-index: -1;
-}
-
-.bgOverlay {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(0, 0, 0, 0.5);
-}
-
-.bgGrid {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background-image: linear-gradient(to right, rgba(255, 255, 255, 0.1) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(255, 255, 255, 0.1) 1px, transparent 1px);
-  background-size: 20px 20px;
+  background:
+    radial-gradient(circle at 15% 20%, rgba(255, 239, 107, 0.18), transparent 40%),
+    radial-gradient(circle at 80% 10%, rgba(82, 246, 255, 0.18), transparent 45%),
+    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.06) 0, rgba(255, 255, 255, 0.06) 2px, transparent 2px, transparent 38px),
+    #05070d;
 }
 
 .homeContent {
@@ -85,24 +67,4 @@
   background-color: transparent;
   color: #fff;
   border: 1px solid #fff;
-}
-
-.modeRow {
-  margin-top: 20px;
-}
-
-.modeLabel {
-  font-size: 1rem;
-  color: #fff;
-}
-
-.modeBtn {
-  margin: 5px;
-  padding: 5px 10px;
-  cursor: pointer;
-}
-
-.modeBtn.active {
-  background-color: #007bff;
-  color: #fff;
 }

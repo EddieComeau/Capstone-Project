@@ -160,38 +160,43 @@ async function syncAdvancedStatsEndpoint(type, options = {}) {
  */
 async function computeAdvancedStats() {
   console.log('🔧 computeAdvancedStats: starting computed stats...');
-  // Player-season aggregation (sums & averages)
-  // Use allowDiskUse on the aggregate options to permit disk-based aggregation if memory limits are exceeded.
-  const playerAgg = Stat.aggregate(
-    [
-      { $match: { playerId: { $ne: null } } },
-      {
-        $group: {
-          _id: { playerId: '$playerId', season: '$season' },
-          count: { $sum: 1 },
-          statsList: { $push: '$stats' },
-        },
-      },
-    ],
-    { allowDiskUse: true },
-  ).cursor({ batchSize: 200 });
+  const playerAgg = new Map();
+  const teamAgg = new Map();
 
-  for await (const g of playerAgg) {
-    const playerId = g._id.playerId;
-    const season = g._id.season;
-    const count = g.count || 0;
-    const list = g.statsList || [];
-    // sum numeric fields
-    const sums = {};
-    for (const s of list) {
-      if (!s || typeof s !== 'object') continue;
-      for (const [k, v] of Object.entries(s)) {
-        const num = typeof v === 'number' ? v : typeof v === 'string' && !isNaN(Number(v)) ? Number(v) : null;
-        if (num == null) continue;
-        sums[k] = (sums[k] || 0) + num;
-      }
+  const cursor = Stat.find({})
+    .select({ playerId: 1, teamId: 1, season: 1, stats: 1 })
+    .lean()
+    .cursor({ batchSize: 500 });
+
+  const addStats = (map, id, season, stats) => {
+    if (id == null || season == null) return;
+    const key = `${id}:${season}`;
+    let entry = map.get(key);
+    if (!entry) {
+      entry = { id, season, count: 0, sums: {} };
+      map.set(key, entry);
     }
-    // averages
+    entry.count += 1;
+    if (!stats || typeof stats !== 'object') return;
+    for (const [k, v] of Object.entries(stats)) {
+      const num =
+        typeof v === 'number'
+          ? v
+          : typeof v === 'string' && !isNaN(Number(v))
+          ? Number(v)
+          : null;
+      if (num == null) continue;
+      entry.sums[k] = (entry.sums[k] || 0) + num;
+    }
+  };
+
+  for await (const row of cursor) {
+    addStats(playerAgg, row.playerId, row.season, row.stats);
+    addStats(teamAgg, row.teamId, row.season, row.stats);
+  }
+
+  for (const entry of playerAgg.values()) {
+    const { id: playerId, season, count, sums } = entry;
     const averages = {};
     for (const [k, v] of Object.entries(sums)) averages[k] = v / Math.max(1, count);
     const scope = 'season';
@@ -209,39 +214,12 @@ async function computeAdvancedStats() {
       },
       { upsert: true },
     );
-    // compute specific advanced metrics (QB passer rating etc) for this player-season
     await computeSpecificMetricsForPlayerSeason(playerId, season, scope);
-    // merge sources into metrics
     await mergeAdvancedSources('player', playerId, season, scope);
   }
-  // Team-season computed aggregation
-  const teamAgg = Stat.aggregate(
-    [
-      { $match: { teamId: { $ne: null } } },
-      {
-        $group: {
-          _id: { teamId: '$teamId', season: '$season' },
-          count: { $sum: 1 },
-          statsList: { $push: '$stats' },
-        },
-      },
-    ],
-    { allowDiskUse: true },
-  ).cursor({ batchSize: 200 });
-  for await (const g of teamAgg) {
-    const teamId = g._id.teamId;
-    const season = g._id.season;
-    const count = g.count || 0;
-    const list = g.statsList || [];
-    const sums = {};
-    for (const s of list) {
-      if (!s || typeof s !== 'object') continue;
-      for (const [k, v] of Object.entries(s)) {
-        const num = typeof v === 'number' ? v : typeof v === 'string' && !isNaN(Number(v)) ? Number(v) : null;
-        if (num == null) continue;
-        sums[k] = (sums[k] || 0) + num;
-      }
-    }
+
+  for (const entry of teamAgg.values()) {
+    const { id: teamId, season, count, sums } = entry;
     const averages = {};
     for (const [k, v] of Object.entries(sums)) averages[k] = v / Math.max(1, count);
     const scope = 'season';
@@ -259,7 +237,6 @@ async function computeAdvancedStats() {
       },
       { upsert: true },
     );
-    // compute specific team metrics if needed
     await computeSpecificMetricsForTeamSeason(teamId, season, scope);
     await mergeAdvancedSources('team', teamId, season, scope);
   }

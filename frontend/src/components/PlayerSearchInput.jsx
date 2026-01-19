@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { apiGet } from "../lib/api";
 import { TEAM_LIST } from "../data/teamOptions";
 import { POSITIONS } from "../data/positions";
 
@@ -18,26 +19,78 @@ export default function PlayerSearchInput({ onSelect }) {
   const [teamFilter, setTeamFilter] = useState("");
   const [posFilter, setPosFilter] = useState("");
 
+  function normalizePosition(position) {
+    if (!position) return "";
+    const raw = String(position).toUpperCase();
+    if (POSITIONS.includes(raw)) return raw;
+    if (raw.includes("QUARTERBACK")) return "QB";
+    if (raw.includes("RUNNING BACK")) return "RB";
+    if (raw.includes("FULLBACK")) return "FB";
+    if (raw.includes("WIDE RECEIVER")) return "WR";
+    if (raw.includes("TIGHT END")) return "TE";
+    if (raw.includes("CENTER")) return "C";
+    if (raw.includes("GUARD")) return "OG";
+    if (raw.includes("TACKLE")) return "OT";
+    if (raw.includes("DEFENSIVE END")) return "DE";
+    if (raw.includes("DEFENSIVE TACKLE")) return "DT";
+    if (raw.includes("NOSE TACKLE")) return "NT";
+    if (raw.includes("LINEBACKER")) return "LB";
+    if (raw.includes("CORNERBACK")) return "CB";
+    if (raw.includes("FREE SAFETY")) return "FS";
+    if (raw.includes("STRONG SAFETY")) return "SS";
+    if (raw.includes("SAFETY")) return "S";
+    if (raw.includes("KICKER")) return "K";
+    if (raw.includes("PUNTER")) return "P";
+    if (raw.includes("LONG SNAPPER")) return "LS";
+    if (raw.includes("KICK RETURNER")) return "KR";
+    if (raw.includes("PUNT RETURNER")) return "PR";
+    return raw;
+  }
+
+  function matchesPositionFilter(position, filter) {
+    if (!filter) return true;
+    const norm = normalizePosition(position);
+    const groups = {
+      OL: ["LT", "LG", "C", "RG", "RT", "OT", "OG", "OL"],
+      DL: ["DT", "DE", "NT", "EDGE", "DL"],
+      LB: ["LB", "ILB", "MLB", "OLB"],
+      DB: ["CB", "FS", "SS", "S", "DB"],
+      S: ["FS", "SS", "S"],
+    };
+    if (groups[filter]) return groups[filter].includes(norm);
+    return norm === filter;
+  }
+
+  const normalizeQuery = (value) =>
+    String(value || "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "");
+
+  const stripExtras = (value) =>
+    String(value || "")
+      .replace(/\([^)]*\)/g, "")
+      .trim();
+
   useEffect(() => {
+    const searchText = stripExtras(query);
     // Clear suggestions if the query is empty or too short
-    if (!query || query.length < 2) {
+    if (!searchText || searchText.length < 2) {
       setSuggestions([]);
       return;
     }
     const timeout = setTimeout(() => {
       setLoading(true);
-      fetch(`/api/players/search?q=${encodeURIComponent(query)}`)
-        .then((res) => res.json())
+      apiGet(`/players/search`, { q: searchText })
         .then((json) => {
           if (!json.ok) return;
-          // Apply optional team and position filters
           const filtered = (json.results || []).filter((p) => {
             const matchesTeam = teamFilter ? p.team_abbr === teamFilter : true;
-            const matchesPos = posFilter ? (p.position || "").toUpperCase() === posFilter : true;
-            // Simple fuzzy search: allow partial matches ignoring case and spaces
-            const name = (p.full_name || "").toLowerCase();
-            const q = query.toLowerCase().replace(/\s+/g, "");
-            return matchesTeam && matchesPos && name.replace(/\s+/g, "").includes(q);
+            const matchesPos = matchesPositionFilter(p.position, posFilter);
+            const name = normalizeQuery(
+              p.full_name || `${p.first_name || ""} ${p.last_name || ""}`.trim()
+            );
+            const q = normalizeQuery(searchText);
+            return matchesTeam && matchesPos && (q ? name.includes(q) : true);
           });
           setSuggestions(filtered);
         })
@@ -52,9 +105,10 @@ export default function PlayerSearchInput({ onSelect }) {
       {/* Filters row */}
       <div style={{ display: "flex", gap: 8, marginBottom: 4 }}>
         <select
+          name="player-team-filter"
           value={teamFilter}
           onChange={(e) => setTeamFilter(e.target.value)}
-          style={{ flex: 1 }}
+          style={{ flex: 1, color: "#111", background: "#fff" }}
         >
           <option value="">All Teams</option>
           {TEAM_LIST.map((t) => (
@@ -64,9 +118,10 @@ export default function PlayerSearchInput({ onSelect }) {
           ))}
         </select>
         <select
+          name="player-position-filter"
           value={posFilter}
           onChange={(e) => setPosFilter(e.target.value)}
-          style={{ flex: 1 }}
+          style={{ flex: 1, color: "#111", background: "#fff" }}
         >
           <option value="">All Pos</option>
           {POSITIONS.map((pos) => (
@@ -78,10 +133,11 @@ export default function PlayerSearchInput({ onSelect }) {
       </div>
 
       <input
+        name="player-search"
         placeholder="Search Player..."
         value={query}
         onChange={(e) => setQuery(e.target.value)}
-        style={{ width: "100%", padding: "6px 10px" }}
+        style={{ width: "100%", padding: "6px 10px", color: "#111", background: "#fff" }}
       />
 
       {loading && <div style={{ fontSize: 12 }}>Loading...</div>}
@@ -98,6 +154,7 @@ export default function PlayerSearchInput({ onSelect }) {
             zIndex: 10,
             maxHeight: 180,
             overflowY: "auto",
+            color: "#111",
           }}
         >
           {suggestions.map((p) => (
@@ -112,6 +169,7 @@ export default function PlayerSearchInput({ onSelect }) {
                 padding: "6px 10px",
                 cursor: "pointer",
                 borderBottom: "1px solid #eee",
+                color: "#111",
               }}
             >
               {p.full_name} <span style={{ opacity: 0.6 }}>({p.team_abbr})</span>
@@ -119,6 +177,23 @@ export default function PlayerSearchInput({ onSelect }) {
           ))}
         </div>
       )}
+      {stripExtras(query).length >= 2 && !loading && suggestions.length === 0 ? (
+        <div
+          style={{
+            position: "absolute",
+            top: "100%",
+            left: 0,
+            right: 0,
+            border: "1px solid #ccc",
+            background: "white",
+            zIndex: 10,
+            padding: "6px 10px",
+            color: "#333",
+          }}
+        >
+          No matches
+        </div>
+      ) : null}
     </div>
   );
 }

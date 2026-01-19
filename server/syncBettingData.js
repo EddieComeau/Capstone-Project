@@ -5,34 +5,54 @@ const mongoose = require('mongoose');
 const { syncOddsAndPropsForWeek } = require('./services/syncService');
 const { getCurrentSeasonAndWeek } = require('./utils/weekUtils');
 
-(async () => {
-  const args = process.argv.slice(2);
-  let season, week;
+async function syncBettingData(options = {}) {
+  const args = options._cliArgs || [];
+  let season = options.season;
+  let week = options.week;
 
   if (args.length === 2) {
     season = parseInt(args[0], 10);
     week = parseInt(args[1], 10);
-    console.log(`🔁 Syncing betting data for season ${season}, week ${week}`);
-  } else {
-    const current = getCurrentSeasonAndWeek();
-    season = current.season;
-    week = current.week;
-    console.log(`ℹ️ No CLI args passed — using current season/week`);
-    console.log(`🔁 Syncing betting data for season ${season}, week ${week}`);
   }
 
-  await connectDB();
-  console.log('✅ Connected to MongoDB');
+  if (!season || !week) {
+    const current = getCurrentSeasonAndWeek();
+    season = season || current.season;
+    week = week || current.week;
+  }
+
+  const shouldConnect = mongoose.connection.readyState === 0;
+  if (shouldConnect) {
+    await connectDB();
+  }
 
   try {
     const result = await syncOddsAndPropsForWeek(season, week);
-    console.log(
-      `✅ Betting data synced — odds: ${result.odds}, props: ${result.props}`
-    );
+    return { ok: true, season, week, odds: result.odds, props: result.props };
   } catch (err) {
-    console.error('❌ Betting sync failed:', err);
+    return { ok: false, season, week, error: err?.message || String(err) };
   } finally {
-    await mongoose.disconnect();
-    console.log('🔌 MongoDB disconnected');
+    if (shouldConnect) {
+      await mongoose.disconnect();
+    }
   }
-})();
+}
+
+module.exports = { syncBettingData };
+
+if (require.main === module) {
+  const args = process.argv.slice(2);
+  syncBettingData({ _cliArgs: args })
+    .then((result) => {
+      if (result.ok) {
+        console.log(
+          `✅ Betting data synced — odds: ${result.odds}, props: ${result.props}`
+        );
+      } else {
+        console.error('❌ Betting sync failed:', result.error);
+      }
+    })
+    .catch((err) => {
+      console.error('❌ Betting sync failed:', err);
+    });
+}

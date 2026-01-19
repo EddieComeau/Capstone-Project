@@ -5,6 +5,7 @@ const router = express.Router();
 
 const Odds = require('../models/Odds');
 const BettingProp = require('../models/BettingProp');
+const Game = require('../models/Game');
 const { syncBettingData } = require('../syncBettingData');
 
 /**
@@ -18,6 +19,16 @@ router.get('/props', async (req, res) => {
     if (req.query.gameId) query.game_id = Number(req.query.gameId);
     if (req.query.propType) query.prop = req.query.propType;
     if (req.query.vendor) query.vendor = req.query.vendor;
+    if (!query.game_id && (req.query.season || req.query.week)) {
+      const season = req.query.season ? Number(req.query.season) : null;
+      const week = req.query.week ? Number(req.query.week) : null;
+      const gameQuery = {};
+      if (season) gameQuery.season = season;
+      if (week) gameQuery.week = week;
+      const games = await Game.find(gameQuery).select({ gameId: 1 }).lean();
+      const ids = games.map((g) => g.gameId).filter(Boolean);
+      if (ids.length) query.game_id = { $in: ids };
+    }
     const limit = req.query.limit ? Math.min(Number(req.query.limit), 1000) : 100;
     const props = await BettingProp.find(query)
       .sort({ updated_at: -1 })
@@ -39,6 +50,16 @@ router.get('/odds', async (req, res) => {
     const query = {};
     if (req.query.gameId) query.game_id = Number(req.query.gameId);
     if (req.query.vendor) query.vendor = req.query.vendor;
+    if (!query.game_id && (req.query.season || req.query.week)) {
+      const season = req.query.season ? Number(req.query.season) : null;
+      const week = req.query.week ? Number(req.query.week) : null;
+      const gameQuery = {};
+      if (season) gameQuery.season = season;
+      if (week) gameQuery.week = week;
+      const games = await Game.find(gameQuery).select({ gameId: 1 }).lean();
+      const ids = games.map((g) => g.gameId).filter(Boolean);
+      if (ids.length) query.game_id = { $in: ids };
+    }
     const limit = req.query.limit ? Math.min(Number(req.query.limit), 1000) : 100;
     const odds = await Odds.find(query)
       .sort({ updated_at: -1 })

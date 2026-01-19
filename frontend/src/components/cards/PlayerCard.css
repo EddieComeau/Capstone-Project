@@ -56,6 +56,20 @@
   margin-bottom: 0.9rem;
 }
 
+.player-grade-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.65rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid rgba(56, 189, 248, 0.7);
+  background: rgba(56, 189, 248, 0.12);
+  color: #7dd3fc;
+  margin-bottom: 0.9rem;
+}
+
 .player-stats-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -83,6 +97,10 @@
   font-size: 0.95rem;
   font-weight: 600;
   color: #e5e7eb;
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .player-footer {

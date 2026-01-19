@@ -7,6 +7,9 @@ const {
 
 const router = express.Router();
 
+// Default to DB-backed teams (used by frontend)
+router.get("/", getAllTeamsFromDB);
+
 // Live data from BALLDONTLIE
 router.get("/live", getAllTeamsLive);
 

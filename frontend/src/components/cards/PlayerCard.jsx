@@ -3,7 +3,16 @@ import Card from './Card'
 import './PlayerCard.css'
 
 function PlayerCard({ player }) {
-  const { name, team, position, number, stats = {}, tier = 'Base' } = player
+  const {
+    name,
+    team,
+    position,
+    number,
+    statLines = [],
+    season,
+    tier = 'Base',
+    grade,
+  } = player
 
   const accent =
     team === 'KC'
@@ -14,6 +23,25 @@ function PlayerCard({ player }) {
       ? 'eagles'
       : 'default'
 
+  const lines = statLines.length
+    ? statLines
+    : [
+        { label: 'Yards', value: '--' },
+        { label: 'TD', value: '--' },
+        { label: 'INT', value: '--' },
+        { label: 'Rating', value: '--' },
+      ]
+  const gradeValue =
+    typeof grade === 'number' ? grade : grade && typeof grade.value === 'number' ? grade.value : null
+  const formatValue = (value) => {
+    if (value == null) return '--'
+    if (typeof value === 'string') return value
+    if (Number.isNaN(Number(value))) return '--'
+    const num = Number(value)
+    if (Number.isInteger(num)) return `${num}`
+    return num.toFixed(1)
+  }
+
   return (
     <Card tier={tier} accent={accent}>
       <div className="player-card-header">
@@ -21,45 +49,28 @@ function PlayerCard({ player }) {
           <span className="player-position">{position}</span>
           <span className="player-team">{team}</span>
         </div>
-        <div className="player-number">
-          #{number}
-        </div>
+        <div className="player-number">#{number ?? "--"}</div>
       </div>
 
-      <div className="player-name">
-        {name}
-      </div>
+      <div className="player-name">{name}</div>
 
-      <div className="player-tier-badge">
-        {tier}
-      </div>
+      <div className="player-tier-badge">{tier}</div>
+      {gradeValue != null ? (
+        <div className="player-grade-badge">Grade {Math.round(gradeValue)} / 100</div>
+      ) : null}
 
       <div className="player-stats-grid">
-        <div className="player-stat">
-          <span className="label">Yards</span>
-          <span className="value">{stats.yards ?? '--'}</span>
-        </div>
-        <div className="player-stat">
-          <span className="label">TD</span>
-          <span className="value">{stats.touchdowns ?? '--'}</span>
-        </div>
-        <div className="player-stat">
-          <span className="label">INT</span>
-          <span className="value">
-            {stats.interceptions ?? '--'}
-          </span>
-        </div>
-        <div className="player-stat">
-          <span className="label">Rating</span>
-          <span className="value">
-            {stats.rating ?? '--'}
-          </span>
-        </div>
+        {lines.map((line) => (
+          <div key={line.label} className="player-stat">
+            <span className="label">{line.label}</span>
+            <span className="value">{formatValue(line.value)}</span>
+          </div>
+        ))}
       </div>
 
       <div className="player-footer">
-        <span className="player-id-chip">NFL Cards 4.0</span>
-        <span className="player-season-tag">2023 Season</span>
+        <span className="player-id-chip">Sideline Studio</span>
+        <span className="player-season-tag">{season ? `${season} Season` : 'Season'}</span>
       </div>
     </Card>
   )

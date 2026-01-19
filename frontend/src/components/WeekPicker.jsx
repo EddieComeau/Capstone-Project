@@ -12,7 +12,7 @@ import useWeekPicker from "../hooks/useWeekPicker";
  * @param {(number) => void} [props.onChange] - Called with the new week
  * @param {number} [props.value] - Controlled selected value
  */
-export default function WeekPicker({ seasonStart, onChange, value }) {
+export default function WeekPicker({ seasonStart, onChange, value, name = "week" }) {
   const { week, setWeek, weeks } = useWeekPicker(seasonStart);
 
   const selected = value !== undefined ? value : week;
@@ -24,7 +24,7 @@ export default function WeekPicker({ seasonStart, onChange, value }) {
   }
 
   return (
-    <select value={selected} onChange={handleChange}>
+    <select name={name} value={selected} onChange={handleChange}>
       {weeks.map((w) => (
         <option key={w} value={w}>
           Week {w}
